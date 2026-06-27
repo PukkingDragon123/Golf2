@@ -38,9 +38,19 @@
       try {
         const raw = window.localStorage.getItem(KEY);
         if (raw) {
-          const data = JSON.parse(raw);
-          this.mem = Object.assign(deepClone(DEFAULT), data);
-          this.mem.settings = Object.assign(deepClone(DEFAULT.settings), data.settings || {});
+          const data = JSON.parse(raw) || {};
+          // per-key, type-checked merge so a corrupt/legacy field can't crash later
+          const m = deepClone(DEFAULT);
+          if (typeof data.coins === 'number' && isFinite(data.coins)) m.coins = data.coins;
+          if (Array.isArray(data.unlocked)) m.unlocked = data.unlocked.filter((x) => typeof x === 'string');
+          if (m.unlocked.indexOf('earth') < 0) m.unlocked.push('earth');
+          if (data.upgrades && typeof data.upgrades === 'object') Object.assign(m.upgrades, data.upgrades);
+          if (data.best && typeof data.best === 'object') Object.assign(m.best, data.best);
+          if (data.stars && typeof data.stars === 'object') Object.assign(m.stars, data.stars);
+          if (Array.isArray(data.ballAccent) && data.ballAccent.length === 3) m.ballAccent = data.ballAccent.slice();
+          if (data.settings && typeof data.settings === 'object') Object.assign(m.settings, data.settings);
+          if (typeof data.seenIntro === 'boolean') m.seenIntro = data.seenIntro;
+          this.mem = m;
         }
       } catch (e) { /* corrupt save -> defaults */ }
     }

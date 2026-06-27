@@ -225,4 +225,8 @@ html, body {
   #hud-help { display: none; }
   #minimap { width: 92px; height: 92px; }
   .menu-buttons.row { flex-direction: column; }
+  /* lift HUD readouts clear of the on-screen touch buttons */
+  #hud-left { bottom: 120px; }
+  #power-track { height: 150px; }
+  #hud-bottom { bottom: 116px; }
 }

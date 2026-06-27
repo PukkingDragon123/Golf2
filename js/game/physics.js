@@ -91,6 +91,7 @@
     const rho = ctx.airDensity;
     const stats = ctx.stats;
     const windFactor = 1 - Math.min(0.9, stats.antiGrav);
+    let grounded = false;
     ball._padCool = Math.max(0, ball._padCool - h);
     ball._dinoCool = Math.max(0, ball._dinoCool - h);
 
@@ -116,9 +117,13 @@
         const hl = Math.hypot(hx, hz) || 1; hx /= hl; hz /= hl;
         // right = up x heading
         const rxr = hz, rzr = -hx;
-        const lift = P.magnusBack * ball.spinB * rho * speed;
+        // clamp Magnus so dense-air worlds can't produce super-gravity lift
+        const cap = 0.85 * ctx.gravity || 8;
+        let lift = P.magnusBack * ball.spinB * rho * speed;
+        lift = Math.max(-cap, Math.min(cap, lift));
         ay += lift;
-        const curve = P.magnusSide * ball.spinS * rho * speed;
+        let curve = P.magnusSide * ball.spinS * rho * speed;
+        curve = Math.max(-cap, Math.min(cap, curve));
         ax += rxr * curve; az += rzr * curve;
       }
     }
@@ -159,6 +164,12 @@
     vel[0] += ax * h; vel[1] += ay * h; vel[2] += az * h;
     pos[0] += vel[0] * h; pos[1] += vel[1] * h; pos[2] += vel[2] * h;
 
+    // keep heading aligned with actual horizontal travel (used by spin-check & jet)
+    if (ball.state === 'air') {
+      const hh = Math.hypot(vel[0], vel[2]);
+      if (hh > 0.1) { ball.heading[0] = vel[0] / hh; ball.heading[2] = vel[2] / hh; }
+    }
+
     // ---- void / falling off (Solar) ----
     if (ctx.voidY != null && pos[1] < ctx.voidY) {
       ev.oob = 'void';
@@ -198,6 +209,7 @@
     const rest = pos[1] - ball.radius;
     if (rest <= gh) {
       pos[1] = gh + ball.radius;
+      grounded = true;
       ctx.course.sampleNormal(_N, pos[0], pos[2]);
       const surfType = ctx.course.surfaceAt ? ctx.course.surfaceAt(pos[0], pos[2]) : 'fairway';
       const sm = surfaceMods(surfType);
@@ -309,8 +321,8 @@
       }
     }
 
-    // ---- rest detection ----
-    if (ball.state === 'roll') {
+    // ---- rest detection (only when actually in contact this step) ----
+    if (ball.state === 'roll' && grounded) {
       const sp = Math.hypot(vel[0], vel[1], vel[2]);
       // shallow slope check so a ball can't "rest" on a steep face
       const flat = _N[1] > 0.985;

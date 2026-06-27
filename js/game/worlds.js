@@ -21,7 +21,7 @@
       physics: {
         gravity: 9.81, airDensity: 1.0,
         wind: { base: 1.6, gust: 2.4 },
-        restitution: 0.34, friction: 0.46, rollFriction: 0.95
+        restitution: 0.34, friction: 0.46, rollFriction: 0.95, powerScale: 1.05
       },
       gimmick: { type: 'classic' },
       palette: {
@@ -52,7 +52,7 @@
       physics: {
         gravity: 1.62, airDensity: 0.02,
         wind: { base: 0, gust: 0 },
-        restitution: 0.24, friction: 0.55, rollFriction: 0.62
+        restitution: 0.24, friction: 0.55, rollFriction: 0.62, powerScale: 0.48
       },
       gimmick: { type: 'lowgrav', craters: 5 },
       palette: {
@@ -84,7 +84,7 @@
       physics: {
         gravity: 9.81, airDensity: 1.7,
         wind: { base: 1.0, gust: 3.0 },
-        restitution: 0.30, friction: 0.50, rollFriction: 1.15
+        restitution: 0.30, friction: 0.50, rollFriction: 1.15, powerScale: 1.22
       },
       gimmick: { type: 'denseair', dinos: 3, lava: true },
       palette: {
@@ -115,7 +115,7 @@
       physics: {
         gravity: 3.4, airDensity: 0.0,
         wind: { base: 0, gust: 0 },
-        restitution: 0.46, friction: 0.40, rollFriction: 0.78
+        restitution: 0.46, friction: 0.40, rollFriction: 0.78, powerScale: 0.55
       },
       gimmick: { type: 'gravitywells', wells: 3, void: true },
       palette: {
@@ -148,7 +148,7 @@
       physics: {
         gravity: 6.0, airDensity: 0.7,
         wind: { base: 1.0, gust: 2.0 },
-        restitution: 0.70, friction: 0.35, rollFriction: 0.82
+        restitution: 0.70, friction: 0.35, rollFriction: 0.82, powerScale: 0.76
       },
       gimmick: { type: 'bouncepads', pads: 5, geysers: 3 },
       palette: {

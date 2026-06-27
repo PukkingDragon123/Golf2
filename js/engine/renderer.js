@@ -194,7 +194,13 @@
         let idx = geo.index;
         if (idx instanceof Uint32Array) {
           if (this.extUint) { mesh.indexType = gl.UNSIGNED_INT; }
-          else { idx = Uint16Array.from(idx); } // fits because builders cap vert count
+          else {
+            // no 32-bit index support: safe only if every index fits in 16 bits
+            for (let i = 0; i < idx.length; i++) {
+              if (idx[i] > 65535) { console.warn('Mesh exceeds 16-bit index range without OES_element_index_uint; geometry may be corrupt.'); break; }
+            }
+            idx = Uint16Array.from(idx);
+          }
         }
         mesh.index = mk(idx, gl.ELEMENT_ARRAY_BUFFER);
         mesh.count = idx.length;

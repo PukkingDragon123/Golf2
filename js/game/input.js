@@ -104,7 +104,12 @@
       return null;
     }
 
-    endFrame() { this.dragX = 0; this.dragY = 0; this.pressed.clear(); }
+    endFrame() {
+      this.dragX = 0; this.dragY = 0; this.pressed.clear();
+      // discard any virtual edge (e.g. a touch jet tap) not consumed this frame,
+      // so it can't carry into the next shot
+      for (const k in this.virtual) if (k.indexOf('_edge_') === 0) this.virtual[k] = false;
+    }
   }
 
   G.Input = Input;

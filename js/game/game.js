@@ -26,6 +26,7 @@
       this.audio = G.audio;
       this.state = 'title';
       this.phase = 'aim';
+      this.holeIndex = 0;
       this.menuMode = true;
       this.time = 0;
       this.wind = [0, 0, 0];
@@ -133,7 +134,7 @@
       this.phase = 'watch';
       this.strokes++;
       const power = this.power;
-      const speed = math.lerp(C.minSpeed, C.maxSpeed, power) * this.stats.powerMul;
+      const speed = math.lerp(C.minSpeed, C.maxSpeed, power) * this.stats.powerMul * (this.world.physics.powerScale || 1);
       const dir = this.aimDir();
       const sb = math.clamp(this.spinB * this.stats.spinMul, -1.7, 1.7);
       const ss = math.clamp(this.spinS * this.stats.spinMul, -1.7, 1.7);
@@ -172,7 +173,7 @@
         { speed: 9, col: [1, 0.9, 0.4], life: 1.4, size: 0.5, grav: -10, up: true, cone: 1.2 });
       const par = this.course.par;
       const diff = par - this.strokes;
-      const coins = math.clamp(Math.round(30 + diff * 15), 5, 220);
+      const coins = math.clamp(Math.round(24 + diff * 15), 5, 200);
       G.save.addCoins(coins);
       this.coinsEarned += coins;
       this.holeScores.push(this.strokes);
@@ -211,7 +212,7 @@
       const next = G.nextWorld(this.worldId);
       let unlocked = null;
       if (next && !G.save.isUnlocked(next)) { G.save.unlock(next); unlocked = G.WORLDS[next]; }
-      const bonus = 120 + stars * 50;
+      const bonus = 90 + stars * 40;
       G.save.addCoins(bonus);
       this.coinsEarned += bonus;
       this.audio.win();
@@ -294,9 +295,12 @@
 
       // jet boost
       if (this.jetRemaining > 0 && this.ball.state === 'air' && (this.input.edge('Space') || this.input.edge('jet'))) {
-        const h = this.ball.heading;
-        this.ball.vel[0] += h[0] * C.jetBoost;
-        this.ball.vel[2] += h[2] * C.jetBoost;
+        // boost along the ball's CURRENT travel direction, not the stale launch heading
+        let hx = this.ball.vel[0], hz = this.ball.vel[2];
+        const hl = Math.hypot(hx, hz);
+        if (hl > 1e-4) { hx /= hl; hz /= hl; } else { hx = this.ball.heading[0]; hz = this.ball.heading[2]; }
+        this.ball.vel[0] += hx * C.jetBoost;
+        this.ball.vel[2] += hz * C.jetBoost;
         this.ball.vel[1] += 4;
         this.jetRemaining--;
         this.audio.jet();
@@ -321,7 +325,18 @@
       if (ev.lipout) this.audio.click();
 
       this._safety += dt;
-      if (this._safety > C.safetyTime) { this.ball.resting = true; ev.stopped = true; V.set(this.ball.vel, 0, 0, 0); }
+      if (this._safety > C.safetyTime) {
+        // stuck (e.g. trapped in an updraft): snap to the ground and treat a bad
+        // landing spot as a hazard/OOB rather than recording a mid-air lastSafe
+        const p = this.ball.pos;
+        const gh = this.course.sampleHeight(p[0], p[2]);
+        p[1] = gh + this.ball.radius;
+        V.set(this.ball.vel, 0, 0, 0);
+        this.ball.resting = true; this.ball.state = 'rest'; ev.stopped = true;
+        const hz = this.course.hazardAt(p[0], p[2]);
+        if (hz) { ev.hazard = hz; ev.hazardPos = [p[0], gh, p[2]]; ev.stopped = false; }
+        else if (!this.course.inBounds(p[0], p[2])) { ev.oob = 'oob'; ev.stopped = false; }
+      }
 
       if (this.ball.resting) {
         if (ev.sank) this._sank();
@@ -369,7 +384,7 @@
       const tmp = G.Physics.makeBall(this.ball.radius);
       V.copy(tmp.pos, this.ball.pos);
       const power = this.charging ? this.power : 0.62;
-      const speed = math.lerp(C.minSpeed, C.maxSpeed, power) * this.stats.powerMul;
+      const speed = math.lerp(C.minSpeed, C.maxSpeed, power) * this.stats.powerMul * (this.world.physics.powerScale || 1);
       const dir = this.aimDir();
       G.Physics.launch(tmp, dir, speed,
         this.loft, math.clamp(this.spinB * this.stats.spinMul, -1.7, 1.7), math.clamp(this.spinS * this.stats.spinMul, -1.7, 1.7));

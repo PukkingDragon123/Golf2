@@ -15,7 +15,7 @@
       id: 'driver', name: 'Quantum Driver', icon: '🚀',
       blurb: 'Warp-charged clubface. Adds raw launch power to every swing.',
       max: 5, cost: curve(80, 1.7),
-      detail: (l) => `+${(l * 9)}% shot power`
+      detail: (l) => `+${(l * 7)}% shot power`
     },
     {
       id: 'aero', name: 'Aero-Shell Ball', icon: '🛸',
@@ -51,7 +51,7 @@
       id: 'magnet', name: 'Hole Magnet', icon: '🕳️',
       blurb: 'A cheeky tractor field that nudges a close ball toward the cup.',
       max: 3, cost: curve(150, 1.9),
-      detail: (l) => `homing within ${(l * 1.1).toFixed(1)}m of the cup`
+      detail: (l) => `homing within ${(1.6 + l).toFixed(1)}m of the cup`
     },
     {
       id: 'jet', name: 'Pulse Jet Booster', icon: '💥',
@@ -69,14 +69,14 @@
     levels = levels || {};
     const L = (id) => levels[id] || 0;
     return {
-      powerMul: 1 + 0.09 * L('driver'),
+      powerMul: 1 + 0.07 * L('driver'),
       dragMul: Math.max(0.25, 1 - 0.12 * L('aero')),
       spinMul: 1 + 0.22 * L('spin'),
       meterCalm: 1 - 0.18 * L('precision'),   // <1 = slower/steadier meter
       aimCalm: 1 - 0.18 * L('precision'),
       rollControl: 0.20 * L('grip'),          // extra rolling friction & downhill damping
       antiGrav: 0.28 * L('antigrav'),         // fraction of well/wind cancelled
-      magnetRange: 1.1 * L('magnet'),         // metres
+      magnetRange: L('magnet') > 0 ? 1.6 + L('magnet') : 0,  // metres (L1 already useful)
       magnetStrength: L('magnet') > 0 ? (0.6 + 0.25 * L('magnet')) : 0,
       jetCharges: L('jet')
     };
