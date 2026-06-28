@@ -277,14 +277,20 @@
       this.flagMesh = this._track(r.createMesh(fb.result()));
       this.flagColor = flagColor;
 
-      // cart
+      // cart + googly eyes + hover-glow rings
       this.cartMesh = this._track(r.createMesh(G.decor.cart(G.save.ballAccent.map((c) => c / 255))));
+      this.eyeWhiteMesh = this._track(r.createMesh(mesh.sphereGeo(1, 12, 9, [0.99, 0.99, 1])));
+      this.eyePupilMesh = this._track(r.createMesh(mesh.sphereGeo(1, 8, 6, [0.05, 0.05, 0.08])));
+      this.hoverRingMesh = this._track(r.createMesh(mesh.cylinderGeo(0.55, 0.55, 0.06, 14, [0.4, 1, 0.7], false)));
       const toGreen = Math.atan2(this.holePos[0] - this.teePos[0], this.holePos[2] - this.teePos[2]);
-      this.cartYaw = toGreen + Math.PI / 2;
-      // park beside the tee
-      const side = 4.0;
-      this.cartPos = [this.teePos[0] + Math.cos(toGreen + Math.PI / 2) * side, 0, this.teePos[2] + Math.sin(toGreen + Math.PI / 2) * side];
+      // park well off to the side and a little behind the tee, clear of the shot view
+      const aimx = Math.sin(toGreen), aimz = Math.cos(toGreen);
+      const perpx = -aimz, perpz = aimx;   // true 90° rotation of the aim vector
+      const side = 11.0, back = 3.5;
+      this.cartPos = [this.teePos[0] + perpx * side - aimx * back, 0, this.teePos[2] + perpz * side - aimz * back];
       this.cartPos[1] = this.sampleHeight(this.cartPos[0], this.cartPos[2]);
+      // face the cart (and its googly eyes) back toward the tee
+      this.cartYaw = Math.atan2(this.teePos[0] - this.cartPos[0], this.teePos[2] - this.cartPos[2]);
 
       // gimmick objects
       this._buildGimmicks();
@@ -486,6 +492,27 @@
       M.translate(cm, cm, [this.cartPos[0], this.cartPos[1] + 0.35 + Math.sin(t * 1.6) * 0.12, this.cartPos[2]]);
       M.rotateY(cm, cm, this.cartYaw);
       r.draw(this.cartMesh, cm, { specular: 0.4, rim: 0.3 });
+      // hover-glow rings under the pods
+      const pods = [[-1.2, 1.0], [1.2, 1.0], [-1.2, -1.1], [1.2, -1.1]];
+      for (let i = 0; i < pods.length; i++) {
+        const rm = M.create();
+        M.translate(rm, cm, [pods[i][0], 0.08, pods[i][1]]);
+        M.rotateX(rm, rm, -Math.PI / 2);
+        const pulse = 0.6 + 0.4 * Math.sin(t * 5 + i);
+        r.draw(this.hoverRingMesh, rm, { unlit: true, blend: true, additive: true, depthWrite: false, emissive: [0.2 * pulse, 0.9 * pulse, 0.6 * pulse], cull: false });
+      }
+      // googly eyes — wobbling pupils on the cart's face
+      const eyes = G.decor.cart.EYES;
+      for (let i = 0; i < eyes.length; i++) {
+        const e = eyes[i];
+        const wc = V.transformMat4([0, 0, 0], [e.x, e.y, e.z], cm);
+        const sm = M.create(); M.translate(sm, sm, wc); M.scale(sm, sm, [e.r, e.r, e.r]);
+        r.draw(this.eyeWhiteMesh, sm, { specular: 0.6, rim: 0.3 });
+        const ox = Math.sin(t * 2.6 + i * 1.7) * 0.10, oy = -0.04 + Math.sin(t * 1.6 + 1.2) * 0.07;
+        const wp = V.transformMat4([0, 0, 0], [e.x + ox, e.y + oy, e.z + e.r * 0.62], cm);
+        const pm = M.create(); M.translate(pm, pm, wp); M.scale(pm, pm, [e.r * 0.5, e.r * 0.5, e.r * 0.5]);
+        r.draw(this.eyePupilMesh, pm, { specular: 0.4 });
+      }
 
       // cup
       const cup = M.create();

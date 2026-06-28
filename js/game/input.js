@@ -13,6 +13,7 @@
       this.pressed = new Set();    // edges this frame
       this.virtual = {};           // name -> bool (touch buttons / gamepad)
       this.dragX = 0; this.dragY = 0;
+      this.pointerTap = false;   // a canvas pointerdown happened this frame
       this._dragId = null; this._lastX = 0; this._lastY = 0;
       this.enabled = true;
       this._bind();
@@ -31,6 +32,7 @@
       const c = this.canvas;
       c.addEventListener('pointerdown', (e) => {
         if (!this.enabled) return;
+        this.pointerTap = true;
         if (this._dragId === null) {
           this._dragId = e.pointerId;
           this._lastX = e.clientX; this._lastY = e.clientY;
@@ -105,7 +107,7 @@
     }
 
     endFrame() {
-      this.dragX = 0; this.dragY = 0; this.pressed.clear();
+      this.dragX = 0; this.dragY = 0; this.pointerTap = false; this.pressed.clear();
       // discard any virtual edge (e.g. a touch jet tap) not consumed this frame,
       // so it can't carry into the next shot
       for (const k in this.virtual) if (k.indexOf('_edge_') === 0) this.virtual[k] = false;

@@ -123,45 +123,148 @@
     return b.result();
   }
 
-  // The extraterrestrial golf cart — a chunky hover buggy with a club bag.
+  // The extraterrestrial golf cart — a cute rounded hover-buggy. Googly eyes are
+  // drawn separately (see EYES) so their pupils can wobble. Faces +Z (front).
   function cart(accent) {
     const b = B();
-    const body = accent || [0.85, 0.78, 0.2];
-    const dark = mul(body, 0.5);
-    const metal = [0.7, 0.72, 0.78];
-    const glass = [0.4, 0.7, 0.85];
-    // lower hull
-    b.addGeometry(mesh.boxGeo(2.0, 0.5, 3.4, dark), 0, 0.7, 0);
-    // main body
-    b.addGeometry(mesh.boxGeo(1.9, 0.6, 3.0, body), 0, 1.1, 0);
-    // nose taper
-    b.addGeometry(mesh.boxGeo(1.5, 0.45, 0.8, mul(body, 1.1)), 0, 1.05, 1.9);
-    // seat
-    b.addGeometry(mesh.boxGeo(1.5, 0.5, 0.9, dark), 0, 1.5, -0.4);
-    b.addGeometry(mesh.boxGeo(1.5, 0.8, 0.2, dark), 0, 1.8, -0.9);
-    // canopy pillars + roof
-    [[-0.8, 1.3], [0.8, 1.3], [-0.8, -0.6], [0.8, -0.6]].forEach((p) => {
-      b.addGeometry(mesh.cylinderGeo(0.08, 0.08, 1.2, 6, metal), p[0], 2.1, p[1]);
+    const body = accent || [0.9, 0.8, 0.25];
+    const dark = mul(body, 0.45);
+    const metal = [0.74, 0.77, 0.82];
+    const glass = [0.45, 0.78, 0.92];
+    // hover skirt (rounded, wide)
+    b.addGeometry(mesh.cylinderGeo(1.55, 1.35, 0.55, 18, dark), 0, 0.5, 0);
+    b.addGeometry(mesh.cylinderGeo(1.5, 1.5, 0.16, 18, mul(metal, 0.6)), 0, 0.84, 0);
+    // main rounded body
+    b.addGeometry(mesh.cylinderGeo(1.45, 1.5, 0.8, 18, body), 0, 1.3, 0);
+    b.addGeometry(mesh.sphereGeo(1.45, 16, 10, mul(body, 1.06)), 0, 1.7, 0);
+    // sleek nose
+    b.addGeometry(mesh.cylinderGeo(0.5, 1.0, 0.9, 14, mul(body, 1.1)), 0, 1.35, 1.15);
+    // face plate (where the eyes sit)
+    b.addGeometry(mesh.cylinderGeo(0.95, 0.95, 0.2, 16, [0.96, 0.96, 0.98]), 0, 2.0, 1.18);
+    // cabin bubble
+    b.addGeometry(mesh.sphereGeo(0.95, 14, 9, glass), 0, 2.35, -0.15);
+    // little smile under the eyes
+    b.addGeometry(mesh.boxGeo(0.7, 0.12, 0.1, dark), 0, 1.62, 2.0);
+    // side fins
+    b.addGeometry(mesh.boxGeo(0.15, 0.5, 1.1, mul(body, 0.8)), -1.5, 1.6, -0.6);
+    b.addGeometry(mesh.boxGeo(0.15, 0.5, 1.1, mul(body, 0.8)), 1.5, 1.6, -0.6);
+    // hover pods at the corners (emissive rings drawn separately under the cart)
+    [[-1.2, 1.0], [1.2, 1.0], [-1.2, -1.1], [1.2, -1.1]].forEach((p) => {
+      b.addGeometry(mesh.cylinderGeo(0.42, 0.5, 0.35, 10, mul(metal, 0.55)), p[0], 0.42, p[1]);
     });
-    b.addGeometry(mesh.boxGeo(2.0, 0.18, 2.4, mul(body, 0.9)), 0, 2.75, 0.2);
-    // windshield
-    b.addGeometry(mesh.boxGeo(1.6, 0.7, 0.08, glass), 0, 1.9, 1.45);
-    // hover pods (dark; an emissive ring is drawn separately under the cart)
-    [[-1.0, 1.3], [1.0, 1.3], [-1.0, -1.3], [1.0, -1.3]].forEach((p) => {
-      b.addGeometry(mesh.cylinderGeo(0.45, 0.5, 0.4, 10, mul(metal, 0.6)), p[0], 0.45, p[1]);
-    });
-    // headlights
-    b.addGeometry(mesh.sphereGeo(0.16, 6, 5, [1, 1, 0.85]), -0.55, 1.1, 2.25);
-    b.addGeometry(mesh.sphereGeo(0.16, 6, 5, [1, 1, 0.85]), 0.55, 1.1, 2.25);
     // antenna
-    b.addGeometry(mesh.cylinderGeo(0.03, 0.03, 1.4, 5, metal), 0.8, 3.4, -1.0);
-    b.addGeometry(mesh.sphereGeo(0.14, 7, 5, [0.4, 1, 0.6]), 0.8, 4.15, -1.0);
+    b.addGeometry(mesh.cylinderGeo(0.035, 0.035, 1.3, 5, metal), 0.7, 3.0, -0.9);
+    b.addGeometry(mesh.sphereGeo(0.15, 8, 6, [0.4, 1, 0.6]), 0.7, 3.7, -0.9);
     // golf bag + clubs at the back
-    b.addGeometry(mesh.cylinderGeo(0.28, 0.3, 1.3, 8, [0.7, 0.15, 0.2]), -0.6, 2.1, -1.55);
+    b.addGeometry(mesh.cylinderGeo(0.26, 0.3, 1.3, 8, [0.75, 0.16, 0.22]), -0.7, 2.1, -1.35);
     [-0.12, 0, 0.12].forEach((dx, i) => {
-      b.addGeometry(mesh.cylinderGeo(0.02, 0.02, 1.0, 4, metal), -0.6 + dx, 3.0 + i * 0.05, -1.55);
-      b.addGeometry(mesh.sphereGeo(0.09, 5, 4, [0.85, 0.85, 0.9]), -0.6 + dx, 3.5 + i * 0.05, -1.55);
+      b.addGeometry(mesh.cylinderGeo(0.02, 0.02, 1.0, 4, metal), -0.7 + dx, 3.0 + i * 0.04, -1.35);
+      b.addGeometry(mesh.sphereGeo(0.09, 5, 4, [0.85, 0.85, 0.9]), -0.7 + dx, 3.5 + i * 0.04, -1.35);
     });
+    return b.result();
+  }
+  // Googly-eye mounts on the cart's face plate (local space, +Z front).
+  cart.EYES = [{ x: -0.42, y: 2.05, z: 1.32, r: 0.34 }, { x: 0.42, y: 2.05, z: 1.32, r: 0.34 }];
+
+  /* ------------------------------- golfer -------------------------------- */
+  // Articulated golfer: body (static) + arms (pivots at the shoulder). Faces +Z.
+  function golfer(accent) {
+    const shirt = accent && accent[0] != null ? accent : [0.85, 0.3, 0.35];
+    const skin = [0.86, 0.66, 0.52];
+    const pants = [0.22, 0.26, 0.34];
+    const cap = mul(shirt, 0.9);
+    const shoe = [0.12, 0.12, 0.14];
+    const shoulderY = 1.42;
+
+    const body = new mesh.Builder();
+    // legs
+    body.addGeometry(mesh.cylinderGeo(0.14, 0.16, 0.85, 7, pants), -0.17, 0.5, 0);
+    body.addGeometry(mesh.cylinderGeo(0.14, 0.16, 0.85, 7, pants), 0.17, 0.5, 0);
+    body.addGeometry(mesh.boxGeo(0.34, 0.12, 0.5, shoe), -0.17, 0.08, 0.12);
+    body.addGeometry(mesh.boxGeo(0.34, 0.12, 0.5, shoe), 0.17, 0.08, 0.12);
+    // hips + torso (slightly tapered)
+    body.addGeometry(mesh.cylinderGeo(0.32, 0.34, 0.45, 9, pants), 0, 1.05, 0);
+    body.addGeometry(mesh.cylinderGeo(0.34, 0.30, 0.7, 10, shirt), 0, 1.5, 0);
+    body.addGeometry(mesh.sphereGeo(0.34, 10, 7, shirt), 0, 1.42, 0);
+    // shoulders
+    body.addGeometry(mesh.cylinderGeo(0.12, 0.12, 0.7, 6, shirt), 0, shoulderY + 0.35, 0);
+    // neck + head
+    body.addGeometry(mesh.cylinderGeo(0.1, 0.1, 0.18, 6, skin), 0, 1.85, 0);
+    body.addGeometry(mesh.sphereGeo(0.27, 12, 9, skin), 0, 2.12, 0);
+    // cap + visor
+    body.addGeometry(mesh.sphereGeo(0.29, 12, 6, cap), 0, 2.2, 0);
+    body.addGeometry(mesh.boxGeo(0.4, 0.06, 0.28, cap), 0, 2.16, 0.26);
+
+    // arms + club, authored hanging straight down from the shoulder pivot (origin)
+    const arms = new mesh.Builder();
+    arms.addGeometry(mesh.cylinderGeo(0.09, 0.09, 0.62, 6, shirt), -0.16, -0.28, 0.06);
+    arms.addGeometry(mesh.cylinderGeo(0.09, 0.09, 0.62, 6, shirt), 0.16, -0.28, 0.06);
+    arms.addGeometry(mesh.sphereGeo(0.13, 7, 5, skin), -0.16, -0.6, 0.12);
+    arms.addGeometry(mesh.sphereGeo(0.13, 7, 5, skin), 0.16, -0.6, 0.12);
+    arms.addGeometry(mesh.sphereGeo(0.14, 7, 5, [0.2, 0.2, 0.22]), 0, -0.66, 0.22); // grip
+    arms.addGeometry(mesh.cylinderGeo(0.035, 0.035, 1.15, 6, [0.85, 0.86, 0.9]), 0, -1.2, 0.22); // shaft
+    arms.addGeometry(mesh.boxGeo(0.26, 0.16, 0.12, [0.3, 0.3, 0.34]), 0, -1.78, 0.26); // head
+
+    return { body: body.result(), arms: arms.result(), shoulderY };
+  }
+
+  /* --------------------------- alien shopkeeper -------------------------- */
+  // A friendly three-eyed alien clerk. Faces +Z. Bob/sway handled by ShopScene.
+  function alienShopkeeper() {
+    const b = B();
+    const skin = [0.45, 0.85, 0.6];
+    const robe = [0.45, 0.25, 0.6];
+    const glow = [0.6, 1.0, 0.8];
+    // robe / base
+    b.addGeometry(mesh.cylinderGeo(0.55, 1.05, 1.7, 14, robe), 0, 0.85, 0);
+    b.addGeometry(mesh.cylinderGeo(0.6, 0.6, 0.2, 14, mul(robe, 1.3)), 0, 1.7, 0);
+    // body + head
+    b.addGeometry(mesh.sphereGeo(0.78, 14, 10, skin), 0, 2.0, 0);
+    b.addGeometry(mesh.sphereGeo(0.95, 16, 12, skin), 0, 3.0, 0);
+    // three big eyes (white) + pupils, looking forward (+Z)
+    [[-0.42, 3.05], [0.0, 3.25], [0.42, 3.05]].forEach((e) => {
+      b.addGeometry(mesh.sphereGeo(0.27, 10, 8, [0.98, 0.98, 1.0]), e[0], e[1], 0.72);
+      b.addGeometry(mesh.sphereGeo(0.13, 8, 6, [0.05, 0.05, 0.08]), e[0], e[1], 0.93);
+    });
+    // smile
+    b.addGeometry(mesh.boxGeo(0.5, 0.08, 0.08, mul(skin, 0.5)), 0, 2.55, 0.9);
+    // antennae with glowing bulbs
+    b.addGeometry(mesh.cylinderGeo(0.04, 0.04, 0.7, 5, skin), -0.3, 3.9, 0);
+    b.addGeometry(mesh.cylinderGeo(0.04, 0.04, 0.7, 5, skin), 0.3, 3.9, 0);
+    b.addGeometry(mesh.sphereGeo(0.14, 8, 6, glow), -0.3, 4.3, 0);
+    b.addGeometry(mesh.sphereGeo(0.14, 8, 6, glow), 0.3, 4.3, 0);
+    // tentacle arms
+    b.addGeometry(mesh.cylinderGeo(0.16, 0.1, 1.2, 8, skin), -0.85, 1.9, 0.2);
+    b.addGeometry(mesh.cylinderGeo(0.16, 0.1, 1.2, 8, skin), 0.85, 1.9, 0.2);
+    return b.result();
+  }
+
+  /* ------------------------- shop preview models ------------------------- */
+  // A club standing head-down, for the pedestal preview. type: driver|wedge|putter
+  function clubModel(type, accent) {
+    const b = B();
+    const shaft = [0.82, 0.84, 0.9];
+    const grip = [0.15, 0.15, 0.18];
+    const head = accent || [0.85, 0.3, 0.35];
+    b.addGeometry(mesh.cylinderGeo(0.045, 0.05, 3.0, 8, shaft), 0, 1.7, 0);
+    b.addGeometry(mesh.cylinderGeo(0.07, 0.08, 0.8, 8, grip), 0, 3.0, 0);
+    if (type === 'driver') {
+      b.addGeometry(mesh.sphereGeo(0.42, 12, 9, head), 0.1, 0.25, 0.12);
+    } else if (type === 'wedge') {
+      b.addGeometry(mesh.boxGeo(0.5, 0.5, 0.16, head), 0.18, 0.22, 0);
+    } else { // putter
+      b.addGeometry(mesh.boxGeo(0.7, 0.22, 0.28, head), 0.18, 0.16, 0.05);
+    }
+    return b.result();
+  }
+
+  // A glowing abstract upgrade gizmo (core + ring), drawn emissive.
+  function gizmo(color) {
+    const b = B();
+    const c = color || [0.5, 0.9, 1.0];
+    b.addGeometry(mesh.sphereGeo(0.55, 14, 10, c), 0, 0, 0);
+    b.addGeometry(mesh.cylinderGeo(1.1, 1.1, 0.08, 24, mul(c, 1.2), false), 0, 0, 0);
+    b.addGeometry(mesh.cylinderGeo(0.9, 0.9, 0.1, 24, mul(c, 0.8), false), 0, 0, 0);
     return b.result();
   }
 
@@ -196,5 +299,5 @@
     return b.result();
   }
 
-  G.decor = { make, KINDS: Object.keys(KINDS), bouncePad, planet, cart, dino, tree, rock };
+  G.decor = { make, KINDS: Object.keys(KINDS), bouncePad, planet, cart, dino, tree, rock, golfer, alienShopkeeper, clubModel, gizmo };
 })(window.GOLF = window.GOLF || {});

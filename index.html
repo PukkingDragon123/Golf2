@@ -14,12 +14,11 @@
 <body>
   <canvas id="gl"></canvas>
 
-  <!-- WebGL not available -->
   <div id="fallback" class="hidden">
     <div class="fallback-box">
       <h1>🛸 Extraterrestrial Golf Cart</h1>
       <p>This game needs WebGL, which your browser/device didn't provide.</p>
-      <p>Try a recent version of Chrome, Edge, Firefox or Safari with hardware acceleration enabled.</p>
+      <p>Try a recent Chrome, Edge, Firefox or Safari with hardware acceleration on.</p>
     </div>
   </div>
 
@@ -34,13 +33,15 @@
       <button id="btn-pause" class="hud-pill btn">☰</button>
     </div>
 
-    <div id="hud-left">
-      <div id="power-meter">
-        <div id="power-track"><div id="power-fill"></div></div>
-        <div class="power-label">POWER</div>
-      </div>
+    <!-- club selector (left side) -->
+    <div id="club-rail">
+      <button class="club-btn" data-club="driver"><span class="ci">🟥</span><span class="cn">Driver</span><span class="ck">1</span></button>
+      <button class="club-btn" data-club="wedge"><span class="ci">🟦</span><span class="cn">Wedge</span><span class="ck">2</span></button>
+      <button class="club-btn" data-club="putter"><span class="ci">🟩</span><span class="cn">Putter</span><span class="ck">3</span></button>
+      <div id="club-maxdist">max —</div>
     </div>
 
+    <!-- gauges (right side) -->
     <div id="hud-right">
       <canvas id="minimap" width="150" height="150"></canvas>
       <div class="hud-info" id="hud-grav">⬇ 1.00 G</div>
@@ -48,56 +49,54 @@
       <div class="hud-info" id="hud-dist">0 m</div>
     </div>
 
-    <div id="hud-bottom">
-      <div class="hud-info big" id="hud-club">Driver · 12°</div>
-      <div class="hud-info" id="hud-spin">Spin: none</div>
-      <div class="hud-info dim" id="hud-gimmick">✦ Gimmick</div>
-      <div class="hud-info hidden" id="hud-jet">💥 Jet</div>
+    <!-- skill-check (center bottom) -->
+    <div id="skill">
+      <div id="power-wrap">
+        <div id="power-slider">
+          <div id="power-fill"></div>
+          <div id="power-readout">PULL</div>
+        </div>
+        <div id="power-hint">drag up · or hold <b>SPACE</b> · release to set power</div>
+      </div>
+      <div id="acc-wrap" class="hidden">
+        <div id="acc-bar"><div id="acc-zone"></div><div id="acc-marker"></div></div>
+        <div id="acc-hint">tap / <b>SPACE</b> — stop the marker in the green!</div>
+      </div>
     </div>
 
-    <div id="hud-help">Drag / <b>A D</b> aim · <b>W S</b> loft · <b>E Q</b> back/top · <b>Z X</b> curve · hold <b>SPACE</b> to swing</div>
+    <div class="hud-info dim" id="hud-gimmick">✦ Gimmick</div>
+    <div id="hud-help">drag to aim · <b>1 2 3</b> clubs · drag power · stop the accuracy meter</div>
     <div id="toast"></div>
+  </div>
 
-    <!-- touch controls -->
-    <div id="touch-controls" class="hidden">
-      <div class="tc-cluster tc-left">
-        <button id="btn-aimL" class="tcbtn">◀</button>
-        <button id="btn-aimR" class="tcbtn">▶</button>
-      </div>
-      <div class="tc-cluster tc-mid">
-        <button id="btn-loftU" class="tcbtn sm">loft+</button>
-        <button id="btn-loftD" class="tcbtn sm">loft−</button>
-        <button id="btn-back" class="tcbtn sm">back</button>
-        <button id="btn-top" class="tcbtn sm">top</button>
-        <button id="btn-curveL" class="tcbtn sm">◖</button>
-        <button id="btn-curveR" class="tcbtn sm">◗</button>
-      </div>
-      <div class="tc-cluster tc-right">
-        <button id="btn-jet" class="tcbtn sm">💥</button>
-        <button id="btn-swing" class="tcbtn big">SWING</button>
-      </div>
+  <!-- ====================== 3D Shop (docked panel) ====================== -->
+  <div id="shop-ui" class="hidden">
+    <div class="shop-header">
+      <button id="btn-shop-back" class="back-btn">‹ Done</button>
+      <h2>🛸 Xeno Gear Emporium</h2>
+      <span id="shop-coins" class="coins-badge">🪙 0</span>
     </div>
+    <div class="shop-tabs" id="shop-tabs"></div>
+    <div class="shop-panel"><div id="shop-items"></div></div>
   </div>
 
   <!-- ====================== Overlay screens ====================== -->
   <div id="overlay">
-    <!-- Title -->
     <section id="screen-title" class="screen">
       <div class="title-glow"></div>
       <div class="title-coins-wrap"><span id="title-coins" class="coins-badge">🪙 0</span>
         <button id="btn-mute" class="icon-btn">🔊</button>
       </div>
       <h1 class="game-title">🛸 EXTRATERRESTRIAL<br><span>GOLF CART</span></h1>
-      <p class="subtitle">3D golf across the cosmos — the Moon, the dinosaur age, the solar system &amp; alien worlds, each with its own twist. Upgrade your cart's gear and master them all.</p>
+      <p class="subtitle">3D golf across the cosmos — the Moon, the dinosaur age, the solar system &amp; alien worlds, each with its own twist. Pick a club, nail the swing, and kit out your googly-eyed hover-cart.</p>
       <div class="menu-buttons">
         <button id="btn-play" class="menu-btn primary">▶ Play</button>
         <button id="btn-shop" class="menu-btn">🛠 Gear Shop</button>
         <button id="btn-howto" class="menu-btn">❔ How to Play</button>
       </div>
-      <div class="accent-pick">Ball colour: <span id="accent-swatches"></span></div>
+      <div class="accent-pick">Ball &amp; cart colour: <span id="accent-swatches"></span></div>
     </section>
 
-    <!-- World select -->
     <section id="screen-worlds" class="screen hidden">
       <div class="screen-head">
         <button id="btn-worlds-back" class="back-btn">‹ Back</button>
@@ -107,17 +106,6 @@
       <div id="worlds-grid" class="worlds-grid"></div>
     </section>
 
-    <!-- Shop -->
-    <section id="screen-shop" class="screen hidden">
-      <div class="screen-head">
-        <button id="btn-shop-back" class="back-btn">‹ Back</button>
-        <h2>🛠 Cart Gear Shop</h2>
-        <span id="shop-coins" class="coins-badge">🪙 0</span>
-      </div>
-      <div id="shop-items" class="shop-items"></div>
-    </section>
-
-    <!-- Hole result -->
     <section id="screen-holeresult" class="screen hidden">
       <div class="result-card">
         <h2 id="hr-label">Birdie!</h2>
@@ -127,7 +115,6 @@
       </div>
     </section>
 
-    <!-- World result -->
     <section id="screen-worldresult" class="screen hidden">
       <div class="result-card">
         <h2 id="wr-title">World Complete!</h2>
@@ -143,7 +130,6 @@
       </div>
     </section>
 
-    <!-- How to play -->
     <section id="screen-howto" class="screen hidden">
       <div class="screen-head">
         <button id="btn-howto-back" class="back-btn">‹ Back</button>
@@ -151,14 +137,13 @@
       </div>
       <div class="howto">
         <div class="howto-col">
-          <h3>Take your shot</h3>
+          <h3>Every shot, three steps</h3>
           <ul>
-            <li><b>Aim:</b> drag the view or press <b>A</b>/<b>D</b> (← →).</li>
-            <li><b>Loft / club:</b> <b>W</b>/<b>S</b> (↑ ↓) — higher loft = higher, shorter shots.</li>
-            <li><b>Spin:</b> <b>E</b>/<b>Q</b> for back/top spin, <b>Z</b>/<b>X</b> to curve left/right.</li>
-            <li><b>Power:</b> hold <b>SPACE</b> — the meter sweeps up — release to swing.</li>
-            <li><b>Jet boost:</b> with the Pulse Jet equipped, tap <b>SPACE</b> in flight.</li>
-            <li>The glowing arc previews your shot. Watch the wind &amp; gravity gauges.</li>
+            <li><b>1. Club:</b> pick <b>Driver</b> (distance), <b>Wedge</b> (high &amp; soft) or <b>Putter</b> (roll) from the left — or keys <b>1 / 2 / 3</b>. Each shows its max distance.</li>
+            <li><b>2. Power:</b> drag the power bar up (or hold <b>SPACE</b>) and release to lock how hard you swing.</li>
+            <li><b>3. Accuracy:</b> a marker sweeps a bar — tap / <b>SPACE</b> to stop it in the green zone. Miss left/right and the shot pushes that way.</li>
+            <li><b>Aim &amp; look:</b> drag the view (or <b>A</b>/<b>D</b>). The glowing arc previews your shot.</li>
+            <li><b>Jet boost:</b> with the Pulse Jet equipped, tap in flight to boost on.</li>
           </ul>
         </div>
         <div class="howto-col">
@@ -166,20 +151,19 @@
           <ul>
             <li>🌍 <b>Verdant Links</b> — wind &amp; water, your warm-up.</li>
             <li>🌙 <b>Lunar Links</b> — 1/6 gravity &amp; no air; drives fly forever.</li>
-            <li>🦕 <b>Jurassic Fairway</b> — thick air drags shots; lava &amp; roaming dinos.</li>
+            <li>🦕 <b>Jurassic Fairway</b> — thick air, lava &amp; roaming dinos.</li>
             <li>🪐 <b>Orbital Open</b> — gravity wells bend your ball; the void keeps strays.</li>
-            <li>👽 <b>Xeno Country Club</b> — springy turf, launch fungi &amp; updraft geysers.</li>
+            <li>👽 <b>Xeno Country Club</b> — springy turf, launch fungi &amp; geysers.</li>
           </ul>
           <h3>Progress</h3>
           <ul>
             <li>Beat a world to unlock the next. Earn 🪙 by scoring well.</li>
-            <li>Spend coins in the Gear Shop on unique upgrades for your cart.</li>
+            <li>Spend coins at the 3D <b>Xeno Gear Emporium</b> on clubs, balls &amp; cart tech.</li>
           </ul>
         </div>
       </div>
     </section>
 
-    <!-- Pause -->
     <section id="screen-pause" class="screen hidden">
       <div class="result-card">
         <h2>Paused</h2>
@@ -204,10 +188,12 @@
   <!-- game -->
   <script src="js/game/save.js"></script>
   <script src="js/game/gear.js"></script>
+  <script src="js/game/clubs.js"></script>
   <script src="js/game/worlds.js"></script>
   <script src="js/game/decor.js"></script>
   <script src="js/game/physics.js"></script>
   <script src="js/game/course.js"></script>
+  <script src="js/game/shopscene.js"></script>
   <script src="js/game/input.js"></script>
   <script src="js/game/game.js"></script>
   <script src="js/game/hud.js"></script>
