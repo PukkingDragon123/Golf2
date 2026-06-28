@@ -174,11 +174,42 @@
   //   torso  (hip joint at origin, +Y up)  drawn at base + (0,hipY,0)
   //   arms   (shoulder pivot at origin)    drawn at torso + (0,shoulderLocal,0)
   //   club   (grip pivot at origin)        drawn at arms + hand
-  function golfer(accent) {
-    const shirt = accent && accent[0] != null ? accent : [0.85, 0.3, 0.35];
+  function addHat(b, hat, shirt) {
+    const cap = mul(shirt, 0.92);
+    if (!hat || hat === 'none') return;
+    if (hat === 'cap') {
+      b.addGeometry(mesh.sphereGeo(0.27, 14, 8, cap), 0, 1.2, -0.01);
+      b.addGeometry(mesh.boxGeo(0.4, 0.05, 0.28, cap), 0, 1.15, 0.25);
+    } else if (hat === 'beanie') {
+      b.addGeometry(mesh.sphereGeo(0.28, 14, 8, cap), 0, 1.22, 0);
+      b.addGeometry(mesh.cylinderGeo(0.27, 0.27, 0.09, 14, mul(cap, 0.8)), 0, 1.12, 0);
+      b.addGeometry(mesh.sphereGeo(0.06, 8, 6, [1, 1, 1]), 0, 1.42, 0);
+    } else if (hat === 'tophat') {
+      const blk = [0.07, 0.07, 0.09];
+      b.addGeometry(mesh.cylinderGeo(0.34, 0.34, 0.05, 16, blk), 0, 1.3, 0);
+      b.addGeometry(mesh.cylinderGeo(0.22, 0.22, 0.42, 14, blk), 0, 1.53, 0);
+      b.addGeometry(mesh.cylinderGeo(0.225, 0.225, 0.07, 14, shirt), 0, 1.38, 0);
+    } else if (hat === 'crown') {
+      const gold = [1.0, 0.82, 0.2];
+      b.addGeometry(mesh.cylinderGeo(0.26, 0.26, 0.16, 12, gold), 0, 1.32, 0);
+      const spike = mesh.cylinderGeo(0.0, 0.06, 0.18, 4, gold, false);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        b.addGeometryT(spike, Math.cos(a) * 0.24, 1.45, Math.sin(a) * 0.24, 1, a, [1, 1, 1]);
+      }
+    } else if (hat === 'antenna') {
+      const stalk = [0.2, 0.2, 0.22], glow = [Math.min(1, shirt[0] * 1.3 + 0.2), Math.min(1, shirt[1] * 1.3 + 0.2), Math.min(1, shirt[2] * 1.3 + 0.2)];
+      [-0.1, 0.1].forEach((x) => {
+        b.addGeometry(mesh.cylinderGeo(0.025, 0.025, 0.32, 5, stalk), x, 1.45, 0);
+        b.addGeometry(mesh.sphereGeo(0.07, 8, 6, glow), x, 1.63, 0);
+      });
+    }
+  }
+
+  function golfer(shirtIn, hat) {
+    const shirt = shirtIn && shirtIn[0] != null ? shirtIn : [0.85, 0.3, 0.35];
     const skin = [0.86, 0.66, 0.52];
     const pants = [0.24, 0.27, 0.36];
-    const cap = mul(shirt, 0.92);
     const shoe = [0.11, 0.11, 0.13];
     const glove = [0.92, 0.92, 0.95];
     const belt = [0.14, 0.14, 0.17];
@@ -205,8 +236,7 @@
     torso.addGeometry(mesh.cylinderGeo(0.095, 0.1, 0.16, 8, skin), 0, 0.88, 0);     // neck
     torso.addGeometry(mesh.sphereGeo(0.25, 14, 11, skin), 0, 1.12, 0);              // head
     torso.addGeometry(mesh.boxGeo(0.075, 0.07, 0.09, mul(skin, 0.96)), 0, 1.1, 0.24); // nose
-    torso.addGeometry(mesh.sphereGeo(0.27, 14, 8, cap), 0, 1.2, -0.01);             // cap dome
-    torso.addGeometry(mesh.boxGeo(0.4, 0.05, 0.28, cap), 0, 1.15, 0.25);            // visor
+    addHat(torso, hat === undefined ? 'cap' : hat, shirt);                          // customizable hat
 
     // ---- arms + hands (pivot at the shoulders/sternum, hanging down) ----
     const arms = new mesh.Builder();

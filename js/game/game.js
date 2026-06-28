@@ -1,25 +1,29 @@
 /* ===========================================================================
- * game.js  —  The conductor. Owns the renderer/camera/particles/input, runs the
- * state machine (title → world select → play → results → shop) and the shot
- * mechanics: pick a club, drag the power, pass the accuracy skill-check, watch
- * the golfer swing and the ball fly. Also drives the follow camera, the live
- * trajectory preview, scoring, coins and the 3D shop scene.
+ * game.js  —  Conductor for the party game. Local hot-seat multiplayer, a
+ * goofy drag-and-fling (slingshot) swing with a floppy ragdoll arm and a dash
+ * of chaos, and a Mario-Party-style run of minigames across cool-named maps.
+ * No upgrades, no clubs — just fling and have fun.
  * =========================================================================== */
 (function (G) {
   'use strict';
-  const M = G.M, V = G.V, math = G.math, DEG = math.DEG;
+  const M = G.M, V = G.V, math = G.math;
 
   const C = {
     aimDist: 10, aimPitch: 0.30, watchDist: 16, watchHeight: 8,
-    minSpeed: 8, maxSpeed: 46,
-    aimRate: 1.5, dragAim: 0.005, dragPitch: 0.004,
-    jetBoost: 15, safetyTime: 26,
-    powerRate: 0.8,         // keyboard hold-fill per second
-    accBaseSpeed: 2.1,      // accuracy sweeps per second
-    accDead: 0.10,          // accuracy "safe zone" half-width (matches the green band)
-    swingDur: 0.64, backswingEnd: 0.34, impactT: 0.5,
-    ballRadius: 0.24
+    minSpeed: 8, maxSpeed: 47,
+    maxDragPx: 240,
+    swingDur: 0.5, backswingEnd: 0.0, impactT: 0.16,   // drag = backswing; release fires the downswing
+    safetyTime: 22, ballRadius: 0.24, strokeCap: 7
   };
+  // base physics stats (no upgrades anymore)
+  const STATS = { powerMul: 1, dragMul: 1, spinMul: 1, rollControl: 0, antiGrav: 0, magnetRange: 0, magnetStrength: 0, jetCharges: 0 };
+
+  const MINIGAMES = {
+    longbomb: { id: 'longbomb', name: 'Long Bomb', emoji: '💥', blurb: 'One mega-swing — furthest landing wins!', unit: 'm', better: 'high' },
+    pinseeker: { id: 'pinseeker', name: 'Pin Seeker', emoji: '🎯', blurb: 'One shot. Closest to the flag wins!', unit: 'm to pin', better: 'low' },
+    holerush: { id: 'holerush', name: 'Hole Rush', emoji: '🏁', blurb: 'Sink it in the fewest swings!', unit: 'strokes', better: 'low' }
+  };
+  const ROUNDS_TOTAL = 5;
 
   class Game {
     constructor(renderer, canvas) {
@@ -31,29 +35,23 @@
       this.audio = G.audio;
       this.state = 'title';
       this.phase = 'aim';
-      this.holeIndex = 0;
       this.menuMode = true;
       this.time = 0;
       this.wind = [0, 0, 0];
       this.windInfo = { dir: 0, speed: 0 };
       this.ball = G.Physics.makeBall(C.ballRadius);
-      this.stats = G.gear.statsFromSave();
-      this.club = 'driver';
-      this.power = 0; this._powerSource = null;
-      this.accPos = 0; this.accDir = 1; this.accOffset = 0;
-      this.swingT = 0; this.swingActive = false; this._launched = false;
-      this.maxDist = 0;
-      this.camYaw = 0; this.camPitch = C.aimPitch;
-      this.jetRemaining = 0;
-      this.ballRot = M.create();   // accumulated ball orientation (rolling/spin)
-      this._rotTmp = M.create();
-      this._camSnap = true;
-      this._safety = 0;
-      this.course = null;
-      this.ctx = null;
-      this.shopScene = null;
-      this.onStateChange = null;
-      this.toast = null;
+      this.stats = STATS;
+      this.power = 0; this.aimYaw = 0; this.camYaw = 0; this.camPitch = C.aimPitch;
+      this.loft = 0.36; this._dragBaseYaw = 0;
+      this.swingActive = false; this.swingT = 0; this._launched = false;
+      this.ballRot = M.create(); this._rotTmp = M.create();
+      this._camSnap = true; this._safety = 0; this._turnEndT = 0;
+      this.players = []; this.activeIdx = 0; this.turnOrder = []; this.turnPos = 0;
+      this.partyRounds = []; this.roundIdx = 0; this.mode = 'longbomb';
+      this.strokes = 0; this.holeIndex = 0;
+      this.course = null; this.ctx = null; this.gMesh = null;
+      this.onStateChange = null; this.onFrame = null; this.toast = null;
+      this._traj = null; this._projDist = 0;
       this._buildHelpers();
       this.audio.setMuted(G.save.settings.muted);
       this.audio.setVolume(G.save.settings.volume);
@@ -61,84 +59,71 @@
 
     _buildHelpers() {
       const r = this.r, mesh = G.mesh;
-      this.ballTex = r.createTexture(G.textures.ball(G.save.ballAccent));
+      this.ballTex = r.createTexture(G.textures.ball([245, 245, 248]));
       this.ballMesh = r.createMesh(mesh.sphereGeo(this.ball.radius, 22, 14, [1, 1, 1]));
       this.dotMesh = r.createMesh(mesh.sphereGeo(0.14, 6, 5, [1, 1, 1]));
       this.quadMesh = r.createMesh(mesh.quadGeo(1, 1, [1, 1, 1]));
       this.shadowTex = this.particles.tex;
-      this._buildGolfer();
-    }
-
-    _buildGolfer() {
-      const r = this.r, gl = r.gl;
-      const del = (m) => { if (m) ['position', 'normal', 'color', 'uv', 'index'].forEach((k) => { if (m[k]) gl.deleteBuffer(m[k]); }); };
-      del(this.gLower); del(this.gTorso); del(this.gArms); del(this.gClub);
-      const g = G.decor.golfer(G.save.ballAccent.map((c) => c / 255));
-      this.gLower = r.createMesh(g.lower); this.gTorso = r.createMesh(g.torso);
-      this.gArms = r.createMesh(g.arms); this.gClub = r.createMesh(g.club);
-      this.gHipY = g.hipY; this.gShoulder = g.shoulderLocal; this.gHand = g.hand;
-    }
-
-    refreshStats() {
-      this.stats = G.gear.statsFromSave();
-      if (this.ctx) this.ctx.stats = this.stats;
-      const gl = this.r.gl;
-      gl.deleteTexture(this.ballTex);
-      this.ballTex = this.r.createTexture(G.textures.ball(G.save.ballAccent));
-      this._buildGolfer();   // re-skin to the chosen accent
-      this._computeMaxDist();
-    }
-
-    clubEff() { return G.computeClub(this.club, this.stats); }
-
-    selectClub(id) {
-      if (!G.clubById[id]) return;
-      if (this.phase !== 'aim') return;
-      this.club = id;
-      this.audio.click();
-      this._computeMaxDist();
-      this._predict();
-      this._emit('hud');
     }
 
     /* ----------------------------- showcase ------------------------------ */
     startShowcase() {
-      this.menuMode = true;
-      this.state = 'title';
-      const ids = G.WORLD_ORDER.filter((id) => G.save.isUnlocked(id));
-      const pick = ids[Math.floor(Math.random() * ids.length)] || 'earth';
-      this.world = G.WORLDS[pick] || G.WORLDS.earth;
-      this._loadCourse(this.world, 0);
+      this.menuMode = true; this.state = 'title';
+      this.world = G.WORLDS[G.WORLD_ORDER[Math.floor(Math.random() * G.WORLD_ORDER.length)]];
+      this._loadCourse(this.world, Math.floor(Math.random() * 3));
       this._placeBallOnTee();
+      this.gMesh = null;
     }
 
-    /* ----------------------------- play flow ----------------------------- */
-    startWorld(id) {
-      const world = G.WORLDS[id];
-      if (!world) return;
-      this.worldId = id; this.world = world;
-      this.holeIndex = 0; this.totalStrokes = 0; this.totalPar = 0;
-      this.holeScores = []; this.coinsEarned = 0;
-      this.refreshStats();
-      this.startHole(0);
+    /* ------------------------------- party ------------------------------- */
+    startParty(players) {
+      this.players = players;
+      players.forEach((p) => { p.score = 0; p.result = null; p.strokes = 0; G.players.buildMeshes(this.r, p); });
+      this.partyRounds = this._makeRounds(ROUNDS_TOTAL);
+      this.roundIdx = 0;
+      this.beginRound();
     }
 
-    startHole(i) {
-      this.holeIndex = i;
-      this._loadCourse(this.world, i);
-      this.totalPar += this.course.par;
-      this.strokes = 0;
-      this._placeBallOnTee();
-      this.lastSafe = V.clone(this.ball.pos);
-      this.camYaw = this._yawToHole();
-      this.camPitch = C.aimPitch;
-      this.phase = 'aim'; this.power = 0; this.accOffset = 0; this.swingActive = false;
-      this.menuMode = false; this.state = 'playing';
-      this._camSnap = true;
-      this.club = (this.course.par === 3) ? 'wedge' : 'driver';
-      this._computeMaxDist();
+    _makeRounds(n) {
+      const games = Object.keys(MINIGAMES), maps = G.WORLD_ORDER.slice();
+      const rounds = []; let lg = null, lm = null;
+      for (let i = 0; i < n; i++) {
+        let g, m, t = 0;
+        do { g = games[Math.floor(Math.random() * games.length)]; } while (g === lg && ++t < 8);
+        t = 0;
+        do { m = maps[Math.floor(Math.random() * maps.length)]; } while (m === lm && ++t < 8);
+        rounds.push({ game: g, map: m }); lg = g; lm = m;
+      }
+      return rounds;
+    }
+
+    beginRound() {
+      const r = this.partyRounds[this.roundIdx];
+      this.mode = r.game; this.world = G.WORLDS[r.map];
+      this._loadCourse(this.world, this.roundIdx % this.world.holes);
+      this.players.forEach((p) => { p.result = null; p.strokes = 0; });
+      this.turnOrder = this.players.map((_, i) => i);
+      this.turnPos = 0;
+      this.state = 'roundintro'; this.menuMode = true;
       this.audio.setAmbient(this.world.ambient.intensity, this.world.ambient.tone);
-      this.showToast(this.world.gimmickHint, 4.2);
+      this._emit('roundintro', { round: this.roundIdx + 1, total: this.partyRounds.length, game: MINIGAMES[this.mode], map: this.world });
+    }
+
+    startRoundTurns() { this.beginTurn(); }
+
+    beginTurn() {
+      this.activeIdx = this.turnOrder[this.turnPos];
+      const p = this.players[this.activeIdx];
+      this.gMesh = p._m;
+      this._placeBallOnTee();
+      this.strokes = 0; p.strokes = 0;
+      this.lastSafe = V.clone(this.ball.pos);
+      this.camYaw = this.aimYaw = this._yawToHole();
+      this.camPitch = C.aimPitch;
+      this.phase = 'aim'; this.power = 0; this.swingActive = false; this._launched = false;
+      this.state = 'play'; this.menuMode = false; this._camSnap = true;
+      this.showToast('🏌️ ' + p.name + ' — ' + MINIGAMES[this.mode].emoji + ' ' + MINIGAMES[this.mode].name, 2.0);
+      this._predict();
       this._emit('hud');
     }
 
@@ -157,188 +142,77 @@
       V.set(this.ball.vel, 0, 0, 0);
       this.ball.resting = true; this.ball.state = 'rest';
       M.identity(this.ballRot);
+      this.shotStart = [this.ball.pos[0], this.ball.pos[2]];
     }
 
     _yawToHole() {
       const c = this.course, b = this.ball.pos;
       return Math.atan2(c.holePos[0] - b[0], c.holePos[2] - b[2]);
     }
+    aimDir() { return [Math.sin(this.aimYaw), 0, Math.cos(this.aimYaw)]; }
+    activePlayer() { return this.players[this.activeIdx]; }
+    miniGame() { return MINIGAMES[this.mode]; }
 
-    aimDir() { return [Math.sin(this.camYaw), 0, Math.cos(this.camYaw)]; }
-
-    // estimate full-power carry+roll for the current club & world (for the HUD)
-    _computeMaxDist() {
-      if (!this.ctx) { this.maxDist = 0; return; }
-      const club = this.clubEff();
-      const tmp = G.Physics.makeBall(this.ball.radius);
-      V.copy(tmp.pos, this.ball.pos);
-      const speed = C.maxSpeed * this.stats.powerMul * (this.world.physics.powerScale || 1) * club.power;
-      const dir = this.aimDir();
-      G.Physics.launch(tmp, dir, speed, club.loftRad, club.back, 0);
-      const sx = tmp.pos[0], sz = tmp.pos[2];
-      const savedWind = this.ctx.wind; this.ctx.wind = [0, 0, 0];
-      for (let i = 0; i < 400 && !tmp.resting; i++) G.Physics.update(tmp, this.ctx, 1 / 60, {});
-      this.ctx.wind = savedWind;
-      this.maxDist = Math.round(Math.hypot(tmp.pos[0] - sx, tmp.pos[2] - sz));
+    /* --------------------------- drag-fling shot ------------------------- */
+    _readDrag() {
+      const dx = this.input.dragTotalX, dy = this.input.dragTotalY;
+      const len = Math.hypot(dx, dy);
+      this.power = Math.min(1, len / C.maxDragPx);
+      const yaw = this._dragBaseYaw;
+      const fwd = [Math.sin(yaw), 0, Math.cos(yaw)];
+      const right = [Math.cos(yaw), 0, -Math.sin(yaw)];
+      // slingshot: launch opposite to the pull
+      let lx = fwd[0] * dy - right[0] * dx;
+      let lz = fwd[2] * dy - right[2] * dx;
+      if (Math.hypot(lx, lz) < 0.0001) { lx = fwd[0]; lz = fwd[2]; }
+      this.aimYaw = Math.atan2(lx, lz);
+      this.loft = this.course.surfaceAt(this.ball.pos[0], this.ball.pos[2]) === 'green' ? 0.09 : 0.36;
     }
 
-    projectedDist() {
-      const s = math.lerp(C.minSpeed, C.maxSpeed, this.power) / C.maxSpeed;
-      return Math.round(this.maxDist * s * s);
-    }
-
-    /* --------------------------- shot skill check ------------------------ */
-    beginPower(source) {
-      if (this.phase !== 'aim') return;
-      this.phase = 'power';
-      this._powerSource = source;
-      if (source !== 'pointer') this.power = 0;
-      this.audio.ensure();
-      this._emit('hud');
-    }
-    setPower(p) { if (this.phase === 'power') { this.power = math.clamp(p, 0, 1); this._predict(); this._emit('hud'); } }
-    confirmPower() {
-      if (this.phase !== 'power') return;
-      this.phase = 'accuracy';
-      this.accPos = 0; this.accDir = 1;
-      this.audio.putt();
-      this._emit('hud');
-    }
-    lockAccuracy() {
-      if (this.phase !== 'accuracy') return;
-      this.accOffset = this.accPos;
-      this.phase = 'swing';
-      this.swingT = 0; this.swingActive = true; this._launched = false;
-      const perfect = Math.abs(this.accOffset) < C.accDead;
-      if (perfect) { this.showToast('Perfect strike!', 1.2); this.audio.click(); }
-      this._emit('hud');
+    _beginSwing() {
+      this._shotPower = this.power; this._shotAim = this.aimYaw; this._shotLoft = this.loft;
+      this.phase = 'swing'; this.swingActive = true; this.swingT = C.backswingEnd; this._launched = false;
+      this.audio.woosh();
     }
 
     _doLaunch() {
-      this._launched = true;
-      this.phase = 'watch';
-      this.strokes++;
-      const club = this.clubEff();
-      // green "safe zone": no penalty within accDead of centre, scaling in beyond it
-      const off = this.accOffset;
-      const effOff = Math.sign(off) * Math.max(0, Math.abs(off) - C.accDead);
-      const yaw = this.camYaw + effOff * club.deflect;
+      this._launched = true; this.phase = 'watch';
+      this.strokes++; this.activePlayer().strokes = this.strokes;
+      const power = this._shotPower;
+      const chaosAim = (Math.random() - 0.5) * 0.05 * (0.4 + power);
+      const chaosPow = 0.93 + Math.random() * 0.14;
+      const yaw = this._shotAim + chaosAim;
       const dir = [Math.sin(yaw), 0, Math.cos(yaw)];
-      const powerLoss = 1 - 0.16 * Math.abs(effOff);
-      const speed = math.lerp(C.minSpeed, C.maxSpeed, this.power) *
-        this.stats.powerMul * (this.world.physics.powerScale || 1) * club.power * powerLoss;
-      G.Physics.launch(this.ball, dir, speed, club.loftRad, club.back, effOff * 0.6);
-      this.jetRemaining = this.stats.jetCharges;
+      const speed = math.lerp(C.minSpeed, C.maxSpeed, power) * (this.world.physics.powerScale || 1) * chaosPow;
+      const sidespin = (Math.random() - 0.5) * 0.5 * power;
+      G.Physics.launch(this.ball, dir, speed, this._shotLoft, 0.25, sidespin);
       this._safety = 0;
-      this.audio.hit(this.power);
+      this.audio.hit(power);
       const surf = this.course.surfaceAt(this.ball.pos[0], this.ball.pos[2]);
       const col = surf === 'sand' ? [0.85, 0.78, 0.55] : [0.6, 0.7, 0.4];
-      this.particles.burst([this.ball.pos[0], this.ball.pos[1] - 0.2, this.ball.pos[2]], 8,
-        { speed: 3, col, life: 0.5, size: 0.3, grav: -6, up: true });
+      this.particles.burst([this.ball.pos[0], this.ball.pos[1] - 0.15, this.ball.pos[2]], 8, { speed: 3, col, life: 0.5, size: 0.3, grav: -6, up: true });
       this._emit('hud');
     }
 
-    _settle() { V.copy(this.lastSafe, this.ball.pos); this.phase = 'aim'; this.power = 0; this.accOffset = 0; this.swingActive = false; this._launched = false; this.camYaw = this._yawToHole(); if (this.course.surfaceAt(this.ball.pos[0], this.ball.pos[2]) === 'green') this.club = 'putter'; this._computeMaxDist(); this._emit('hud'); }
-
-    cancelPower() { if (this.phase === 'power') { this.phase = 'aim'; this.power = 0; this._emit('hud'); } }
-
-    _penalty(type) {
-      this.strokes++;
-      const msg = type === 'water' ? 'Splash! +1 penalty' : type === 'lava' ? 'Vaporised! +1 penalty'
-        : type === 'acid' ? 'Dissolved! +1 penalty' : type === 'void' ? 'Lost to the void! +1 penalty'
-          : 'Out of bounds! +1 penalty';
-      this.showToast(msg, 2.6);
-      V.copy(this.ball.pos, this.lastSafe);
-      V.set(this.ball.vel, 0, 0, 0);
-      this.ball.resting = true; this.ball.state = 'rest';
-      this.phase = 'aim'; this.power = 0; this.accOffset = 0; this.swingActive = false; this._launched = false;
-      this.camYaw = this._yawToHole();
-      this._camSnap = true; this._computeMaxDist();
-      this._emit('hud');
+    _beginAim() {
+      this.phase = 'aim'; this.power = 0;
+      this.camYaw = this.aimYaw = this._yawToHole();
+      this._predict(); this._emit('hud');
     }
-
-    _sank() {
-      this.audio.sink();
-      const hp = this.course.holePos;
-      this.particles.burst([hp[0], hp[1] + 0.5, hp[2]], 60,
-        { speed: 9, col: [1, 0.9, 0.4], life: 1.4, size: 0.5, grav: -10, up: true, cone: 1.2 });
-      const par = this.course.par;
-      const diff = par - this.strokes;
-      const coins = math.clamp(Math.round(24 + diff * 15), 5, 200);
-      G.save.addCoins(coins);
-      this.coinsEarned += coins;
-      this.holeScores.push(this.strokes);
-      this.totalStrokes += this.strokes;
-      const label = this._scoreLabel(diff, this.strokes);
-      this.state = 'holeresult';
-      this._emit('holeresult', {
-        label, strokes: this.strokes, par, coins,
-        hole: this.holeIndex + 1, holes: this.world.holes,
-        last: this.holeIndex + 1 >= this.world.holes
-      });
-    }
-
-    _scoreLabel(diff, strokes) {
-      if (strokes === 1) return 'Hole in One! 🌟';
-      if (diff >= 3) return 'Albatross! 🦅';
-      if (diff === 2) return 'Eagle! 🦅';
-      if (diff === 1) return 'Birdie! 🐦';
-      if (diff === 0) return 'Par';
-      if (diff === -1) return 'Bogey';
-      if (diff === -2) return 'Double Bogey';
-      return (-diff) + ' over';
-    }
-
-    nextHole() {
-      if (this.holeIndex + 1 >= this.world.holes) { this._finishWorld(); return; }
-      this.startHole(this.holeIndex + 1);
-    }
-
-    _finishWorld() {
-      const par = this.totalPar, total = this.totalStrokes;
-      let stars = 1;
-      if (total <= par) stars = 3;
-      else if (total <= par + this.world.holes) stars = 2;
-      G.save.recordWorld(this.worldId, total, par, stars);
-      const next = G.nextWorld(this.worldId);
-      let unlocked = null;
-      if (next && !G.save.isUnlocked(next)) { G.save.unlock(next); unlocked = G.WORLDS[next]; }
-      const bonus = 90 + stars * 40;
-      G.save.addCoins(bonus);
-      this.coinsEarned += bonus;
-      this.audio.win();
-      this.state = 'worldresult';
-      this._emit('worldresult', {
-        world: this.world, total, par, stars, bonus,
-        coinsEarned: this.coinsEarned, scores: this.holeScores.slice(), unlocked
-      });
-    }
-
-    /* ------------------------------- shop -------------------------------- */
-    enterShop() {
-      if (!this.shopScene) this.shopScene = new G.ShopScene(this.r);
-      this.state = 'shop';
-      this._camSnap = true;
-    }
-    setShopPreview(kind) { if (this.shopScene) this.shopScene.setPreview(kind); }
 
     /* ----------------------------- update -------------------------------- */
     update(dt) {
-      this.time += dt;
-      dt = Math.min(dt, 0.05);
+      this.time += dt; dt = Math.min(dt, 0.05);
       this._computeWind();
       if (this.course) this.course.update(dt);
       if (this.toast) { this.toast.t -= dt; if (this.toast.t <= 0) this.toast = null; }
 
-      if (this.state === 'playing') this._updatePlay(dt);
-      else if (this.state === 'holeresult' || this.state === 'worldresult') this._updateCamera(dt);
-      else if (this.state === 'shop') this._updateShop(dt);
+      if (this.state === 'play') this._updatePlay(dt);
       else this._updateMenu(dt);
 
-      if (this.course && this.course.ambientParticles && this.state !== 'shop') this.course.ambientParticles(this.particles, dt);
-      // realistic ball roll/spin: rotate the ball about the axis perpendicular to travel
+      if (this.course && this.course.ambientParticles) this.course.ambientParticles(this.particles, dt);
       const v = this.ball.vel, spd = Math.hypot(v[0], v[1], v[2]);
-      if (spd > 0.05 && this.state !== 'shop') {
+      if (spd > 0.05) {
         const ang = Math.min(0.7, spd * dt / this.ball.radius);
         M.fromAxisAngle(this._rotTmp, [v[2], 0, -v[0]], ang);
         M.multiply(this.ballRot, this._rotTmp, this.ballRot);
@@ -354,17 +228,11 @@
       this.camera.orbitTo(center, this.time * 0.12, 0.42, 86);
     }
 
-    _updateShop(dt) {
-      this.shopScene.update(dt);
-      this.shopScene.placeCamera(this.camera, this.time);
-    }
-
     _computeWind() {
       const w = this.world ? this.world.physics.wind : { base: 0, gust: 0 };
       if (!w || (w.base === 0 && w.gust === 0)) { this.wind = [0, 0, 0]; this.windInfo = { dir: 0, speed: 0 }; return; }
       const base = this.course ? this.course.windDir : 0;
-      const n = G.noise.fbm2(this.time * 0.15, 3.3, 7, 3);
-      const dir = base + (n - 0.5) * 0.7;
+      const dir = base + (G.noise.fbm2(this.time * 0.15, 3.3, 7, 3) - 0.5) * 0.7;
       const speed = w.base + w.gust * G.noise.fbm2(this.time * 0.22, 9.1, 21, 3);
       this.wind = [Math.cos(dir) * speed, 0, Math.sin(dir) * speed];
       this.windInfo = { dir, speed };
@@ -372,9 +240,6 @@
 
     _updatePlay(dt) {
       if (this.paused) { this._updateCamera(dt); return; }
-      const inp = this.input.poll();
-      this._handleClubKeys();
-
       if (this.swingActive) {
         this.swingT += dt;
         if (!this._launched && this.swingT >= C.impactT) this._doLaunch();
@@ -382,62 +247,29 @@
       }
 
       if (this.phase === 'aim') {
-        this.camYaw += inp.aim * C.aimRate * dt + inp.dragX * C.dragAim;
-        this.camPitch = math.clamp(this.camPitch - inp.dragY * C.dragPitch, 0.08, 1.2);
-        if (inp.swing && this.input.edge('Space')) this.beginPower('key');
+        if (this.input.pointerActive) { this.phase = 'drag'; this._dragBaseYaw = this.camYaw; this.audio.ensure(); }
+      } else if (this.phase === 'drag') {
+        this._readDrag();
         this._predict();
-      } else if (this.phase === 'power') {
-        if (this._powerSource === 'key') {
-          const rate = C.powerRate * Math.max(0.4, this.stats.meterCalm);
-          this.power = math.clamp(this.power + rate * dt, 0, 1);
-          this._predict();
-          if (!inp.swing) this.confirmPower();
+        if (!this.input.pointerActive) {
+          if (this.power > 0.06) this._beginSwing(); else this.phase = 'aim';
         }
-      } else if (this.phase === 'accuracy') {
-        const spd = C.accBaseSpeed * Math.max(0.4, this.stats.meterCalm);
-        this.accPos += this.accDir * spd * dt;
-        if (this.accPos > 1) { this.accPos = 1; this.accDir = -1; }
-        else if (this.accPos < -1) { this.accPos = -1; this.accDir = 1; }
-        if (this.input.edge('Space') || this.input.edge('action') || this.input.pointerTap) this.lockAccuracy();
       } else if (this.phase === 'watch') {
-        this._updateWatch(dt, inp);
+        this._updateWatch(dt);
+      } else if (this.phase === 'turnend') {
+        this._turnEndT -= dt;
+        if (this._turnEndT <= 0) this._advanceTurn();
       }
       this._updateCamera(dt);
     }
 
-    _handleClubKeys() {
-      if (this.phase !== 'aim') return;
-      if (this.input.edge('Digit1')) this.selectClub('driver');
-      else if (this.input.edge('Digit2')) this.selectClub('wedge');
-      else if (this.input.edge('Digit3')) this.selectClub('putter');
-    }
-
-    _updateWatch(dt, inp) {
+    _updateWatch(dt) {
       const ev = {};
-      this.ctx.wind = this.wind;
-      this.ctx.stats = this.stats;
+      this.ctx.wind = this.wind; this.ctx.stats = this.stats;
       G.Physics.update(this.ball, this.ctx, dt, ev);
 
-      if (this.jetRemaining > 0 && this.ball.state === 'air' &&
-        (this.input.edge('Space') || this.input.edge('jet') || this.input.edge('action') || this.input.pointerTap)) {
-        let hx = this.ball.vel[0], hz = this.ball.vel[2];
-        const hl = Math.hypot(hx, hz);
-        if (hl > 1e-4) { hx /= hl; hz /= hl; } else { hx = this.ball.heading[0]; hz = this.ball.heading[2]; }
-        this.ball.vel[0] += hx * C.jetBoost;
-        this.ball.vel[2] += hz * C.jetBoost;
-        this.ball.vel[1] += 4;
-        this.jetRemaining--;
-        this.audio.jet();
-        this.particles.burst([this.ball.pos[0], this.ball.pos[1], this.ball.pos[2]], 14,
-          { speed: 6, col: [1, 0.6, 0.2], life: 0.5, size: 0.4, grav: 0, cone: 0.7 });
-        this._emit('hud');
-      }
-
       const sp = V.len(this.ball.vel);
-      if (sp > 6 && Math.random() < 0.6) {
-        this.particles.emit({ p: V.clone(this.ball.pos), v: [0, 0, 0], life: 0.4, size: 0.2, col: [0.9, 0.95, 1], drag: 2, grav: 0 });
-      }
-
+      if (sp > 6 && Math.random() < 0.6) this.particles.emit({ p: V.clone(this.ball.pos), v: [0, 0, 0], life: 0.4, size: 0.2, col: [0.9, 0.95, 1], drag: 2, grav: 0 });
       if (ev.bounce) { this.audio.bounce(ev.bounce); this.particles.burst(ev.bouncePos, 6, { speed: 2.5, col: [0.7, 0.7, 0.6], life: 0.4, size: 0.25, grav: -8, up: true }); }
       if (ev.pad) { this.audio.boing(); this.particles.burst(ev.pad, 16, { speed: 5, col: [0.3, 1, 0.7], life: 0.6, size: 0.4, grav: -6, up: true }); }
       if (ev.dino) { this.audio.woosh(); this.particles.burst(ev.dino, 12, { speed: 4, col: [0.6, 0.5, 0.3], life: 0.5, size: 0.4, grav: -6 }); }
@@ -445,32 +277,99 @@
 
       this._safety += dt;
       if (this._safety > C.safetyTime) {
-        const p = this.ball.pos;
-        const gh = this.course.sampleHeight(p[0], p[2]);
-        p[1] = gh + this.ball.radius;
-        V.set(this.ball.vel, 0, 0, 0);
+        const p = this.ball.pos, gh = this.course.sampleHeight(p[0], p[2]);
+        p[1] = gh + this.ball.radius; V.set(this.ball.vel, 0, 0, 0);
         this.ball.resting = true; this.ball.state = 'rest'; ev.stopped = true;
         const hz = this.course.hazardAt(p[0], p[2]);
-        if (hz) { ev.hazard = hz; ev.hazardPos = [p[0], gh, p[2]]; }
-        else if (!this.course.inBounds(p[0], p[2])) { ev.oob = 'oob'; }
+        if (hz) ev.hazard = hz; else if (!this.course.inBounds(p[0], p[2])) ev.oob = 'oob';
       }
+      if (this.ball.resting) this._onShotDone(ev);
+    }
 
-      if (this.ball.resting) {
-        if (ev.sank) this._sank();
-        else if (ev.hazard) {
-          if (ev.hazard === 'lava' || ev.hazard === 'acid') this.audio.sizzle(); else this.audio.splash();
-          this.particles.burst(ev.hazardPos || this.ball.pos, 20,
-            { speed: 5, col: ev.hazard === 'lava' ? [1, 0.5, 0.1] : ev.hazard === 'acid' ? [0.4, 1, 0.4] : [0.5, 0.7, 1], life: 0.8, size: 0.5, grav: -8, up: true });
-          this._penalty(ev.hazard);
-        } else if (ev.oob) { this.audio.woosh(); this._penalty(ev.oob); }
-        else this._settle();
+    _onShotDone(ev) {
+      const p = this.activePlayer(), b = this.ball.pos;
+      const teeD = Math.hypot(b[0] - this.shotStart[0], b[2] - this.shotStart[1]);
+      const pinD = Math.hypot(this.course.holePos[0] - b[0], this.course.holePos[2] - b[2]);
+      const bad = ev.hazard || ev.oob;
+      if (bad) { this.audio[(ev.hazard === 'lava' || ev.hazard === 'acid') ? 'sizzle' : 'splash'](); this.particles.burst(ev.hazardPos || b, 18, { speed: 5, col: [0.6, 0.8, 1], life: 0.7, size: 0.4, grav: -8, up: true }); }
+      else if (ev.sank) { this.audio.sink(); this.particles.burst([this.course.holePos[0], this.course.holePos[1] + 0.5, this.course.holePos[2]], 50, { speed: 9, col: [1, 0.9, 0.4], life: 1.3, size: 0.5, grav: -10, up: true, cone: 1.2 }); }
+
+      if (this.mode === 'holerush') {
+        if (ev.sank) { p.result = this.strokes; this._finishTurn(p.name + ' sank it in ' + this.strokes + '!'); }
+        else if (bad) {
+          this.strokes++; p.strokes = this.strokes;
+          V.copy(this.ball.pos, this.lastSafe); V.set(this.ball.vel, 0, 0, 0); this.ball.resting = true; this.ball.state = 'rest';
+          if (this.strokes >= C.strokeCap) { p.result = C.strokeCap + 1; this._finishTurn(p.name + ' maxed out!'); }
+          else { this.showToast('Penalty! +1 stroke', 1.6); this._beginAim(); }
+        } else {
+          V.copy(this.lastSafe, this.ball.pos);
+          if (this.strokes >= C.strokeCap) { p.result = C.strokeCap + 1; this._finishTurn(p.name + ' maxed out!'); }
+          else this._beginAim();
+        }
+      } else { // 1-shot games
+        let r, msg;
+        if (this.mode === 'longbomb') { r = bad ? 0 : teeD; msg = bad ? p.name + ' flopped it!' : p.name + ': ' + Math.round(teeD) + ' m'; }
+        else { r = (ev.sank ? 0 : (bad ? 9999 : pinD)); msg = bad ? p.name + ' lost it!' : (ev.sank ? p.name + ' — IN! 0 m' : p.name + ': ' + pinD.toFixed(1) + ' m to pin'); }
+        p.result = r; this._finishTurn(msg);
       }
     }
 
+    _finishTurn(msg) {
+      this.showToast(msg, 2.2);
+      this.phase = 'turnend'; this._turnEndT = 1.6;
+      this._emit('hud');
+    }
+
+    _advanceTurn() {
+      this.turnPos++;
+      if (this.turnPos >= this.players.length) this._endRound();
+      else this.beginTurn();
+    }
+
+    _endRound() {
+      const mg = MINIGAMES[this.mode];
+      const order = this.players.map((p, i) => ({ p, i, r: p.result == null ? (mg.better === 'high' ? -1 : 1e9) : p.result }));
+      order.sort((a, b) => mg.better === 'high' ? b.r - a.r : a.r - b.r);
+      const n = this.players.length;
+      const ranking = order.map((o, rank) => {
+        const pts = n - rank;   // 1st gets n points, last gets 1
+        o.p.score += pts;
+        let val;
+        if (mg.id === 'holerush') val = (o.p.result == null) ? '—' : (o.p.result >= C.strokeCap + 1 ? 'DNF' : o.p.result + ' strokes');
+        else if (mg.id === 'longbomb') val = (o.p.result ? Math.round(o.p.result) + ' m' : 'flop');
+        else val = (o.p.result == null) ? '—' : (o.p.result >= 9999 ? 'lost' : o.p.result.toFixed(1) + ' m');
+        return { name: o.p.name, color: G.players.colorCss(o.p), value: val, points: pts, total: o.p.score };
+      });
+      this.audio.win();
+      this.state = 'roundresult'; this.menuMode = true;
+      this._emit('roundresult', { round: this.roundIdx + 1, total: this.partyRounds.length, game: mg, map: this.world, ranking });
+    }
+
+    nextRound() {
+      this.roundIdx++;
+      if (this.roundIdx >= this.partyRounds.length) this._podium();
+      else this.beginRound();
+    }
+
+    _podium() {
+      const standings = this.players.map((p) => ({ name: p.name, color: G.players.colorCss(p), score: p.score }))
+        .sort((a, b) => b.score - a.score);
+      this.state = 'podium'; this.menuMode = true;
+      this.audio.win();
+      this._emit('podium', { standings });
+    }
+
+    endParty() {
+      this.players.forEach((p) => G.players.freeMeshes(this.r, p));
+      this.players = [];
+      this.startShowcase();
+    }
+
+    /* ----------------------------- camera -------------------------------- */
     _updateCamera(dt) {
       const b = this.ball.pos;
       let eye, target, stiff;
-      if (this.phase === 'watch') {
+      if (this.phase === 'watch' || this.phase === 'turnend') {
         let dir = [this.ball.vel[0], 0, this.ball.vel[2]];
         if (V.len(dir) < 0.5) dir = this.aimDir();
         V.normalize(dir, dir);
@@ -478,145 +377,96 @@
         target = [b[0] + dir[0] * 2, b[1] + 1, b[2] + dir[2] * 2];
         stiff = 4;
       } else {
-        const aim = this.aimDir();
+        const aim = [Math.sin(this.camYaw), 0, Math.cos(this.camYaw)];
         const cp = Math.cos(this.camPitch), sp = Math.sin(this.camPitch);
         const top = [b[0], b[1] + 1.2, b[2]];
         eye = [top[0] - aim[0] * cp * C.aimDist, top[1] + sp * C.aimDist, top[2] - aim[2] * cp * C.aimDist];
         target = [b[0] + aim[0] * 4, b[1] + 0.8, b[2] + aim[2] * 4];
         stiff = 9;
       }
-      if (this._camSnap) {
-        V.copy(this.camera.position, eye); V.copy(this.camera.target, target);
-        this.camera.updateView(); this._camSnap = false;
-      } else {
-        this.camera.follow(eye, target, dt, stiff);
-      }
+      if (this._camSnap) { V.copy(this.camera.position, eye); V.copy(this.camera.target, target); this.camera.updateView(); this._camSnap = false; }
+      else this.camera.follow(eye, target, dt, stiff);
     }
 
     _predict() {
       if (!this.ctx) return;
-      const club = this.clubEff();
       const tmp = G.Physics.makeBall(this.ball.radius);
       V.copy(tmp.pos, this.ball.pos);
-      const power = (this.phase === 'power') ? this.power : 0.6;
-      const speed = math.lerp(C.minSpeed, C.maxSpeed, power) *
-        this.stats.powerMul * (this.world.physics.powerScale || 1) * club.power;
+      const power = (this.phase === 'drag') ? this.power : 0.55;
+      const speed = math.lerp(C.minSpeed, C.maxSpeed, power) * (this.world.physics.powerScale || 1);
       const dir = this.aimDir();
-      G.Physics.launch(tmp, dir, speed, club.loftRad, club.back, 0);
+      G.Physics.launch(tmp, dir, speed, this.loft, 0.25, 0);
       this.ctx.wind = this.wind;
       const pts = [];
-      for (let i = 0; i < 170 && !tmp.resting; i++) {
-        G.Physics.update(tmp, this.ctx, 1 / 60, {});
-        if (i % 8 === 0) pts.push(V.clone(tmp.pos));
-      }
+      for (let i = 0; i < 170 && !tmp.resting; i++) { G.Physics.update(tmp, this.ctx, 1 / 60, {}); if (i % 8 === 0) pts.push(V.clone(tmp.pos)); }
       this._traj = pts;
+      this._projDist = Math.round(Math.hypot(tmp.pos[0] - this.ball.pos[0], tmp.pos[2] - this.ball.pos[2]));
+    }
+
+    _golferPose() {
+      const ss = math.smoothstep, lp = math.lerp;
+      if (this.swingActive) {
+        const T = this.swingT, IM = C.impactT, SD = C.swingDur;
+        if (T < IM) { const f = ss(0, IM, T); return { coil: lp(0.8, -0.3, f), tilt: 0.07, arm: lp(-2.0, 0.85, f * f), wrist: lp(-1.2, 0, f), weight: lp(-0.12, 0.18, f) }; }
+        const f = ss(IM, SD, Math.min(T, SD));
+        return { coil: lp(-0.3, -1.0, f), tilt: 0.07, arm: lp(0.85, 1.7, f), wrist: lp(0, 0.8, f), weight: lp(0.18, 0.08, f) };
+      }
+      if (this.phase === 'drag') {
+        const w = this.power;
+        return { coil: w * 0.7, tilt: 0.07, arm: 0.5 - w * 2.4, wrist: -w * 1.1, weight: -w * 0.12 };
+      }
+      const t = this.time;
+      return { coil: Math.sin(t * 1.3) * 0.04, tilt: 0.06, arm: 0.5 + Math.sin(t * 1.3) * 0.04, wrist: -0.05, weight: 0 };
     }
 
     /* ----------------------------- render -------------------------------- */
     render() {
-      if (this.state === 'shop' && this.shopScene) { this.shopScene.draw(this.camera, this.time); return; }
       if (!this.course) return;
       const e = this.world.env;
-      const env = {
-        lightDir: e.lightDir, lightColor: e.lightColor, ambient: e.ambient,
-        fogColor: e.fogColor, fogDensity: e.fogDensity, clearColor: e.clearColor,
-        specular: e.specular, rim: e.rim
-      };
+      const env = { lightDir: e.lightDir, lightColor: e.lightColor, ambient: e.ambient, fogColor: e.fogColor, fogDensity: e.fogDensity, clearColor: e.clearColor, specular: e.specular, rim: e.rim };
       this.r.beginFrame(this.camera, env);
       this.course.draw(this.r, this.camera, env, this.particles);
 
       const b = this.ball.pos;
       const gh = this.course.sampleHeight(b[0], b[2]);
+      if (this.state === 'play' && this.gMesh && (this.phase !== 'watch' || this.swingActive)) this._drawGolfer(b, env);
 
-      // golfer (during the address/aim/swing of a shot)
-      const showGolfer = this.state === 'playing' && (this.phase !== 'watch' || this.swingActive);
-      if (showGolfer) this._drawGolfer(b, env);
-
-      // ball shadow
+      // shadow
       const hgt = Math.max(0, b[1] - this.ball.radius - gh);
       const sc = this.ball.radius * 3.0 * (1 + hgt * 0.05);
-      const sm = M.create();
-      M.translate(sm, sm, [b[0], gh + 0.05, b[2]]);
-      M.rotateX(sm, sm, -Math.PI / 2);
-      M.scale(sm, sm, [sc, sc, 1]);
+      const sm = M.create(); M.translate(sm, sm, [b[0], gh + 0.05, b[2]]); M.rotateX(sm, sm, -Math.PI / 2); M.scale(sm, sm, [sc, sc, 1]);
       this.r.draw(this.quadMesh, sm, { texture: this.shadowTex, unlit: true, tint: [0, 0, 0], blend: true, depthWrite: false, opacity: 0.4 / (1 + hgt * 0.08), cull: false });
 
-      // ball (with accumulated roll orientation)
-      const bm = M.create();
-      M.translate(bm, bm, b);
-      M.multiply(bm, bm, this.ballRot);
+      // ball
+      const bm = M.create(); M.translate(bm, bm, b); M.multiply(bm, bm, this.ballRot);
       this.r.draw(this.ballMesh, bm, { texture: this.ballTex, specular: 0.7, rim: 0.25 });
 
-      // trajectory preview
-      if (this.state === 'playing' && (this.phase === 'aim' || this.phase === 'power') && this._traj) {
+      // trajectory preview (aim/drag)
+      if (this.state === 'play' && (this.phase === 'aim' || this.phase === 'drag') && this._traj) {
         for (let i = 0; i < this._traj.length; i++) {
-          const p = this._traj[i];
-          const dm = M.create();
+          const p = this._traj[i], dm = M.create();
           const s = 1 - i / (this._traj.length * 1.4);
-          M.translate(dm, dm, p);
-          M.scale(dm, dm, [s, s, s]);
+          M.translate(dm, dm, p); M.scale(dm, dm, [s, s, s]);
           this.r.draw(this.dotMesh, dm, { unlit: true, emissive: [0.5 * s, 0.95 * s, 1.0 * s], blend: true, additive: true, depthWrite: false });
         }
       }
-
       this.particles.draw(this.camera);
     }
 
-    // hierarchical, eased, physics-styled swing rig
     _drawGolfer(b, env) {
       const aim = this.aimDir();
       const gx = b[0] - aim[0] * 1.3, gz = b[2] - aim[2] * 1.3;
       const gy = this.course.sampleHeight(gx, gz);
-      const p = this._golferPose();
-
-      const base = M.create();
-      M.translate(base, base, [gx, gy, gz]);
-      M.rotateY(base, base, this.camYaw);
-      M.translate(base, base, [0, 0, p.weight]);   // weight shift along the target line
-
-      const lower = M.create(); M.copy(lower, base);
-      M.rotateY(lower, lower, p.coil * 0.35);       // hips follow the turn a little
-      this.r.draw(this.gLower, lower, { specular: 0.12, rim: env.rim * 0.6 });
-
-      const torso = M.create(); M.copy(torso, base);
-      M.translate(torso, torso, [0, this.gHipY, 0]);
-      M.rotateY(torso, torso, p.coil);
-      M.rotateZ(torso, torso, p.tilt);
-      this.r.draw(this.gTorso, torso, { specular: 0.14, rim: env.rim * 0.7 });
-
-      const arms = M.create(); M.copy(arms, torso);
-      M.translate(arms, arms, [0, this.gShoulder, 0]);
-      M.rotateX(arms, arms, p.arm);
-      this.r.draw(this.gArms, arms, { specular: 0.18, rim: env.rim * 0.7 });
-
-      const club = M.create(); M.copy(club, arms);
-      M.translate(club, club, this.gHand);
-      M.rotateX(club, club, p.wrist);
-      this.r.draw(this.gClub, club, { specular: 0.4, rim: env.rim * 0.6 });
-    }
-
-    _golferPose() {
-      const ss = math.smoothstep, lp = math.lerp;
-      if (!this.swingActive) {
-        const t = this.time;
-        return { coil: Math.sin(t * 1.3) * 0.04, tilt: 0.06, arm: 0.5 + Math.sin(t * 1.3) * 0.04, wrist: -0.05, weight: 0 };
-      }
-      const T = this.swingT, BE = C.backswingEnd, IM = C.impactT, SD = C.swingDur;
-      let coil, arm, wrist, weight;
-      const tilt = 0.07;
-      if (T < BE) {                       // takeaway → top (smooth)
-        const f = ss(0, BE, T);
-        arm = lp(0.5, -2.0, f); coil = lp(0, 0.8, f); wrist = lp(-0.05, -1.2, f); weight = lp(0, -0.12, f);
-      } else if (T < IM) {                // downswing (accelerating)
-        let f = (T - BE) / (IM - BE); f = f * f;
-        arm = lp(-2.0, 0.85, f); coil = lp(0.8, -0.3, f); wrist = lp(-1.2, 0.0, f); weight = lp(-0.12, 0.18, f);
-      } else if (T < SD) {                // follow-through (decelerating)
-        const f = ss(IM, SD, T);
-        arm = lp(0.85, 1.7, f); coil = lp(-0.3, -1.0, f); wrist = lp(0.0, 0.8, f); weight = lp(0.18, 0.08, f);
-      } else {
-        arm = 1.7; coil = -1.0; wrist = 0.8; weight = 0.08;
-      }
-      return { coil, arm, wrist, weight, tilt };
+      const p = this._golferPose(), g = this.gMesh;
+      const base = M.create(); M.translate(base, base, [gx, gy, gz]); M.rotateY(base, base, this.camYaw); M.translate(base, base, [0, 0, p.weight]);
+      const lower = M.create(); M.copy(lower, base); M.rotateY(lower, lower, p.coil * 0.35);
+      this.r.draw(g.lower, lower, { specular: 0.12, rim: env.rim * 0.6 });
+      const torso = M.create(); M.copy(torso, base); M.translate(torso, torso, [0, g.hipY, 0]); M.rotateY(torso, torso, p.coil); M.rotateZ(torso, torso, p.tilt);
+      this.r.draw(g.torso, torso, { specular: 0.14, rim: env.rim * 0.7 });
+      const arms = M.create(); M.copy(arms, torso); M.translate(arms, arms, [0, g.shoulderLocal, 0]); M.rotateX(arms, arms, p.arm);
+      this.r.draw(g.arms, arms, { specular: 0.18, rim: env.rim * 0.7 });
+      const club = M.create(); M.copy(club, arms); M.translate(club, club, g.hand); M.rotateX(club, club, p.wrist);
+      this.r.draw(g.club, club, { specular: 0.4, rim: env.rim * 0.6 });
     }
 
     loop(now) {
@@ -632,5 +482,6 @@
     _emit(type, data) { if (this.onStateChange) this.onStateChange(type, data); }
   }
 
+  G.MINIGAMES = MINIGAMES;
   G.Game = Game;
 })(window.GOLF = window.GOLF || {});

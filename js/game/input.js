@@ -14,6 +14,9 @@
       this.virtual = {};           // name -> bool (touch buttons / gamepad)
       this.dragX = 0; this.dragY = 0;
       this.pointerTap = false;   // a canvas pointerdown happened this frame
+      this.pointerUp = false;    // a canvas pointerup happened this frame
+      this.pointerActive = false;
+      this.dragTotalX = 0; this.dragTotalY = 0;   // accumulated since pointerdown
       this._dragId = null; this._lastX = 0; this._lastY = 0;
       this.enabled = true;
       this._bind();
@@ -36,16 +39,18 @@
         if (this._dragId === null) {
           this._dragId = e.pointerId;
           this._lastX = e.clientX; this._lastY = e.clientY;
+          this.pointerActive = true; this.dragTotalX = 0; this.dragTotalY = 0;
           try { c.setPointerCapture(e.pointerId); } catch (err) { }
         }
       });
       c.addEventListener('pointermove', (e) => {
         if (e.pointerId !== this._dragId) return;
-        this.dragX += e.clientX - this._lastX;
-        this.dragY += e.clientY - this._lastY;
+        const ddx = e.clientX - this._lastX, ddy = e.clientY - this._lastY;
+        this.dragX += ddx; this.dragY += ddy;
+        this.dragTotalX += ddx; this.dragTotalY += ddy;
         this._lastX = e.clientX; this._lastY = e.clientY;
       });
-      const end = (e) => { if (e.pointerId === this._dragId) this._dragId = null; };
+      const end = (e) => { if (e.pointerId === this._dragId) { this._dragId = null; this.pointerActive = false; this.pointerUp = true; } };
       c.addEventListener('pointerup', end);
       c.addEventListener('pointercancel', end);
       c.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -107,7 +112,7 @@
     }
 
     endFrame() {
-      this.dragX = 0; this.dragY = 0; this.pointerTap = false; this.pressed.clear();
+      this.dragX = 0; this.dragY = 0; this.pointerTap = false; this.pointerUp = false; this.pressed.clear();
       // discard any virtual edge (e.g. a touch jet tap) not consumed this frame,
       // so it can't carry into the next shot
       for (const k in this.virtual) if (k.indexOf('_edge_') === 0) this.virtual[k] = false;

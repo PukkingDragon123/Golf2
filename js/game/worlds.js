@@ -13,7 +13,7 @@
 
   const WORLDS = {
     earth: {
-      id: 'earth', name: 'Verdant Links', emoji: '🌍',
+      id: 'earth', name: 'Emerald Estate', emoji: '🌳',
       tagline: 'Classic turf, gentle breeze, water you do not want to find.',
       gimmickName: 'Crosswinds & Water',
       gimmickHint: 'Read the wind arrow before every swing — and keep it dry.',
@@ -44,7 +44,7 @@
     },
 
     moon: {
-      id: 'moon', name: 'Lunar Links', emoji: '🌙',
+      id: 'moon', name: 'Moon Mayhem', emoji: '🌙',
       tagline: 'One-sixth gravity and no air. Your drives go forever — and so do mistakes.',
       gimmickName: 'Low Gravity & Craters',
       gimmickHint: 'Tiny taps fly miles in 1/6 g. Beware the crater bowls.',
@@ -76,7 +76,7 @@
     },
 
     dino: {
-      id: 'dino', name: 'Jurassic Fairway', emoji: '🦕',
+      id: 'dino', name: 'Jurassic Jam', emoji: '🦖',
       tagline: 'Thick prehistoric air drags every shot down. Mind the lava — and the locals.',
       gimmickName: 'Dense Air, Lava & Roaming Dinos',
       gimmickHint: 'Heavy air kills carry — swing big. Dinosaurs nudge a ball that strays.',
@@ -107,7 +107,7 @@
     },
 
     solar: {
-      id: 'solar', name: 'Orbital Open', emoji: '🪐',
+      id: 'solar', name: 'Cosmic Carnival', emoji: '🪐',
       tagline: 'Golf among the planets. Gravity wells bend your ball; the void keeps what falls.',
       gimmickName: 'Gravity Wells & The Void',
       gimmickHint: 'Curving past a planet? Let its pull do the work. Off the edge = lost ball.',
@@ -140,7 +140,7 @@
     },
 
     alien: {
-      id: 'alien', name: 'Xeno Country Club', emoji: '👽',
+      id: 'alien', name: 'Alien Antics', emoji: '👽',
       tagline: 'Springy bio-turf, launch-pad fungi and updraft geysers under twin suns.',
       gimmickName: 'Bounce Pads & Updrafts',
       gimmickHint: 'The turf is a trampoline. Ride the geysers; trust the mushrooms.',
