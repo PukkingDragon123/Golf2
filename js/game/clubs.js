@@ -20,7 +20,7 @@
     },
     {
       id: 'putter', name: 'Putter', icon: '🟩', short: 'PUT',
-      loft: 5, power: 0.34, back: 0.0, deflect: 2.4, roll: 1.5,
+      loft: 5, power: 0.55, back: 0.0, deflect: 2.4, roll: 1.5,
       desc: 'Keeps it on the deck — roll it true across the green.'
     }
   ];

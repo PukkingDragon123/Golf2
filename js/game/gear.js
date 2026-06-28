@@ -13,7 +13,7 @@
     {
       id: 'driver', cat: 'Clubs', name: 'Plasma Driver', icon: '🚀',
       blurb: 'Warp-charged clubface — adds raw launch distance to every club.',
-      max: 5, cost: curve(80, 1.7), detail: (l) => `+${(l * 7)}% distance`
+      max: 5, cost: curve(80, 1.7), detail: (l) => `+${(l * 5)}% distance`
     },
     {
       id: 'spin', cat: 'Clubs', name: 'Gyro Wedge Core', icon: '🌀',
@@ -67,10 +67,10 @@
     levels = levels || {};
     const L = (id) => levels[id] || 0;
     return {
-      powerMul: 1 + 0.07 * L('driver'),
+      powerMul: 1 + 0.05 * L('driver'),
       dragMul: Math.max(0.25, 1 - 0.12 * L('aero')),
       spinMul: 1 + 0.22 * L('spin'),
-      meterCalm: 1 - 0.16 * L('precision'),       // <1 = slower meters
+      meterCalm: 1 - 0.12 * L('precision'),       // <1 = slower meters (floor stays above clamp)
       accuracyEase: 1 - 0.16 * L('precision'),    // <1 = tighter dispersion
       putterCtrl: 0.22 * L('putter'),
       rollControl: 0.20 * L('grip'),

@@ -31,10 +31,16 @@
           if (game.phase === 'aim') game.beginPower('pointer');
           if (game.phase === 'power') setFromY(e.clientY);
           try { slider.setPointerCapture(e.pointerId); } catch (err) { }
-          this._dragging = true;
+          this._dragging = true; this._moved = false;
         });
-        slider.addEventListener('pointermove', (e) => { if (this._dragging && game.phase === 'power') setFromY(e.clientY); });
-        const up = (e) => { if (this._dragging) { this._dragging = false; game.confirmPower(); } };
+        slider.addEventListener('pointermove', (e) => { if (this._dragging && game.phase === 'power') { this._moved = true; setFromY(e.clientY); } });
+        // commit on release; a pure low tap (no drag) cancels instead of firing a weak shot
+        const up = () => {
+          if (!this._dragging) return;
+          this._dragging = false;
+          if (!this._moved && game.power < 0.12) game.cancelPower();
+          else game.confirmPower();
+        };
         slider.addEventListener('pointerup', up);
         slider.addEventListener('pointercancel', up);
       }

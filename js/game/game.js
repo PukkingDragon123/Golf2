@@ -16,6 +16,7 @@
     jetBoost: 15, safetyTime: 26,
     powerRate: 0.8,         // keyboard hold-fill per second
     accBaseSpeed: 2.1,      // accuracy sweeps per second
+    accDead: 0.10,          // accuracy "safe zone" half-width (matches the green band)
     swingDur: 0.64, backswingEnd: 0.34, impactT: 0.5,
     ballRadius: 0.32
   };
@@ -72,8 +73,16 @@
     refreshStats() {
       this.stats = G.gear.statsFromSave();
       if (this.ctx) this.ctx.stats = this.stats;
-      this.r.gl.deleteTexture(this.ballTex);
+      const gl = this.r.gl;
+      gl.deleteTexture(this.ballTex);
       this.ballTex = this.r.createTexture(G.textures.ball(G.save.ballAccent));
+      // re-skin the golfer to the chosen accent
+      const del = (m) => { if (m) ['position', 'normal', 'color', 'uv', 'index'].forEach((k) => { if (m[k]) gl.deleteBuffer(m[k]); }); };
+      del(this.golferBody); del(this.golferArms);
+      const golfer = G.decor.golfer(G.save.ballAccent.map((c) => c / 255));
+      this.golferBody = this.r.createMesh(golfer.body);
+      this.golferArms = this.r.createMesh(golfer.arms);
+      this.golferShoulderY = golfer.shoulderY;
       this._computeMaxDist();
     }
 
@@ -196,7 +205,7 @@
       this.accOffset = this.accPos;
       this.phase = 'swing';
       this.swingT = 0; this.swingActive = true; this._launched = false;
-      const perfect = Math.abs(this.accOffset) < 0.08;
+      const perfect = Math.abs(this.accOffset) < C.accDead;
       if (perfect) { this.showToast('Perfect strike!', 1.2); this.audio.click(); }
       this._emit('hud');
     }
@@ -206,13 +215,15 @@
       this.phase = 'watch';
       this.strokes++;
       const club = this.clubEff();
+      // green "safe zone": no penalty within accDead of centre, scaling in beyond it
       const off = this.accOffset;
-      const yaw = this.camYaw + off * club.deflect;
+      const effOff = Math.sign(off) * Math.max(0, Math.abs(off) - C.accDead);
+      const yaw = this.camYaw + effOff * club.deflect;
       const dir = [Math.sin(yaw), 0, Math.cos(yaw)];
-      const powerLoss = 1 - 0.16 * Math.abs(off);
+      const powerLoss = 1 - 0.16 * Math.abs(effOff);
       const speed = math.lerp(C.minSpeed, C.maxSpeed, this.power) *
         this.stats.powerMul * (this.world.physics.powerScale || 1) * club.power * powerLoss;
-      G.Physics.launch(this.ball, dir, speed, club.loftRad, club.back, off * 0.55);
+      G.Physics.launch(this.ball, dir, speed, club.loftRad, club.back, effOff * 0.6);
       this.jetRemaining = this.stats.jetCharges;
       this._safety = 0;
       this.audio.hit(this.power);
@@ -223,7 +234,9 @@
       this._emit('hud');
     }
 
-    _settle() { V.copy(this.lastSafe, this.ball.pos); this.phase = 'aim'; this.power = 0; this.accOffset = 0; this.camYaw = this._yawToHole(); if (this.course.surfaceAt(this.ball.pos[0], this.ball.pos[2]) === 'green') this.club = 'putter'; this._computeMaxDist(); this._emit('hud'); }
+    _settle() { V.copy(this.lastSafe, this.ball.pos); this.phase = 'aim'; this.power = 0; this.accOffset = 0; this.swingActive = false; this._launched = false; this.camYaw = this._yawToHole(); if (this.course.surfaceAt(this.ball.pos[0], this.ball.pos[2]) === 'green') this.club = 'putter'; this._computeMaxDist(); this._emit('hud'); }
+
+    cancelPower() { if (this.phase === 'power') { this.phase = 'aim'; this.power = 0; this._emit('hud'); } }
 
     _penalty(type) {
       this.strokes++;
@@ -234,7 +247,8 @@
       V.copy(this.ball.pos, this.lastSafe);
       V.set(this.ball.vel, 0, 0, 0);
       this.ball.resting = true; this.ball.state = 'rest';
-      this.phase = 'aim'; this.power = 0; this.accOffset = 0; this.camYaw = this._yawToHole();
+      this.phase = 'aim'; this.power = 0; this.accOffset = 0; this.swingActive = false; this._launched = false;
+      this.camYaw = this._yawToHole();
       this._camSnap = true; this._computeMaxDist();
       this._emit('hud');
     }

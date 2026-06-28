@@ -70,7 +70,13 @@
         scale = 0.85; y = 1.7;
       } else if (desc.type === 'ball') {
         geo = mesh.sphereGeo(0.85, 20, 14, [1, 1, 1]);
-        this._ballTex = this._ballTex || r.createTexture(G.textures.ball(desc.accent || [230, 70, 90]));
+        const acc = desc.accent || [230, 70, 90];
+        const key = acc.join(',');
+        if (this._ballTexKey !== key) {
+          if (this._ballTex) r.gl.deleteTexture(this._ballTex);
+          this._ballTex = r.createTexture(G.textures.ball(acc));
+          this._ballTexKey = key;
+        }
         y = 2.9;
       } else if (desc.type === 'cart') {
         geo = G.decor.cart(desc.color || [0.9, 0.8, 0.25]);
