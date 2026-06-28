@@ -167,45 +167,69 @@
   cart.EYES = [{ x: -0.42, y: 2.05, z: 1.32, r: 0.34 }, { x: 0.42, y: 2.05, z: 1.32, r: 0.34 }];
 
   /* ------------------------------- golfer -------------------------------- */
-  // Articulated golfer: body (static) + arms (pivots at the shoulder). Faces +Z.
+  // Detailed articulated golfer for a hierarchical, eased swing. Faces +Z.
+  // Returns 4 parts each authored around its own joint pivot, plus the joint
+  // offsets the rig composes with:
+  //   lower  (feet at y=0 .. hips)         drawn at the golfer base
+  //   torso  (hip joint at origin, +Y up)  drawn at base + (0,hipY,0)
+  //   arms   (shoulder pivot at origin)    drawn at torso + (0,shoulderLocal,0)
+  //   club   (grip pivot at origin)        drawn at arms + hand
   function golfer(accent) {
     const shirt = accent && accent[0] != null ? accent : [0.85, 0.3, 0.35];
     const skin = [0.86, 0.66, 0.52];
-    const pants = [0.22, 0.26, 0.34];
-    const cap = mul(shirt, 0.9);
-    const shoe = [0.12, 0.12, 0.14];
-    const shoulderY = 1.42;
+    const pants = [0.24, 0.27, 0.36];
+    const cap = mul(shirt, 0.92);
+    const shoe = [0.11, 0.11, 0.13];
+    const glove = [0.92, 0.92, 0.95];
+    const belt = [0.14, 0.14, 0.17];
+    const hipY = 0.92, shoulderLocal = 0.62;
 
-    const body = new mesh.Builder();
-    // legs
-    body.addGeometry(mesh.cylinderGeo(0.14, 0.16, 0.85, 7, pants), -0.17, 0.5, 0);
-    body.addGeometry(mesh.cylinderGeo(0.14, 0.16, 0.85, 7, pants), 0.17, 0.5, 0);
-    body.addGeometry(mesh.boxGeo(0.34, 0.12, 0.5, shoe), -0.17, 0.08, 0.12);
-    body.addGeometry(mesh.boxGeo(0.34, 0.12, 0.5, shoe), 0.17, 0.08, 0.12);
-    // hips + torso (slightly tapered)
-    body.addGeometry(mesh.cylinderGeo(0.32, 0.34, 0.45, 9, pants), 0, 1.05, 0);
-    body.addGeometry(mesh.cylinderGeo(0.34, 0.30, 0.7, 10, shirt), 0, 1.5, 0);
-    body.addGeometry(mesh.sphereGeo(0.34, 10, 7, shirt), 0, 1.42, 0);
-    // shoulders
-    body.addGeometry(mesh.cylinderGeo(0.12, 0.12, 0.7, 6, shirt), 0, shoulderY + 0.35, 0);
-    // neck + head
-    body.addGeometry(mesh.cylinderGeo(0.1, 0.1, 0.18, 6, skin), 0, 1.85, 0);
-    body.addGeometry(mesh.sphereGeo(0.27, 12, 9, skin), 0, 2.12, 0);
-    // cap + visor
-    body.addGeometry(mesh.sphereGeo(0.29, 12, 6, cap), 0, 2.2, 0);
-    body.addGeometry(mesh.boxGeo(0.4, 0.06, 0.28, cap), 0, 2.16, 0.26);
+    // ---- lower body (static): shoes, calves, knees, thighs, hips ----
+    const lower = new mesh.Builder();
+    [-0.17, 0.17].forEach((x) => {
+      lower.addGeometry(mesh.boxGeo(0.3, 0.13, 0.52, shoe), x, 0.07, 0.12);
+      lower.addGeometry(mesh.cylinderGeo(0.12, 0.14, 0.4, 9, pants), x, 0.36, 0);   // calf
+      lower.addGeometry(mesh.sphereGeo(0.14, 9, 7, pants), x, 0.58, 0);             // knee
+      lower.addGeometry(mesh.cylinderGeo(0.15, 0.17, 0.34, 9, pants), x, 0.78, 0);  // thigh
+    });
+    lower.addGeometry(mesh.cylinderGeo(0.3, 0.32, 0.26, 12, pants), 0, 0.92, 0);    // hips
+    lower.addGeometry(mesh.cylinderGeo(0.31, 0.31, 0.08, 14, belt), 0, 0.86, 0);    // belt
 
-    // arms + club, authored hanging straight down from the shoulder pivot (origin)
+    // ---- torso (pivot at hip joint, extends up to head) ----
+    const torso = new mesh.Builder();
+    torso.addGeometry(mesh.cylinderGeo(0.29, 0.31, 0.34, 12, shirt), 0, 0.18, 0);   // waist
+    torso.addGeometry(mesh.cylinderGeo(0.33, 0.29, 0.4, 12, shirt), 0, 0.52, 0);    // chest
+    torso.addGeometry(mesh.sphereGeo(0.33, 12, 9, shirt), 0, 0.5, 0);
+    torso.addGeometry(mesh.boxGeo(0.66, 0.2, 0.26, mul(shirt, 1.04)), 0, 0.66, 0);  // shoulder yoke
+    torso.addGeometry(mesh.cylinderGeo(0.14, 0.16, 0.1, 10, mul(shirt, 0.8)), 0, 0.78, 0); // collar
+    torso.addGeometry(mesh.cylinderGeo(0.095, 0.1, 0.16, 8, skin), 0, 0.88, 0);     // neck
+    torso.addGeometry(mesh.sphereGeo(0.25, 14, 11, skin), 0, 1.12, 0);              // head
+    torso.addGeometry(mesh.boxGeo(0.075, 0.07, 0.09, mul(skin, 0.96)), 0, 1.1, 0.24); // nose
+    torso.addGeometry(mesh.sphereGeo(0.27, 14, 8, cap), 0, 1.2, -0.01);             // cap dome
+    torso.addGeometry(mesh.boxGeo(0.4, 0.05, 0.28, cap), 0, 1.15, 0.25);            // visor
+
+    // ---- arms + hands (pivot at the shoulders/sternum, hanging down) ----
     const arms = new mesh.Builder();
-    arms.addGeometry(mesh.cylinderGeo(0.09, 0.09, 0.62, 6, shirt), -0.16, -0.28, 0.06);
-    arms.addGeometry(mesh.cylinderGeo(0.09, 0.09, 0.62, 6, shirt), 0.16, -0.28, 0.06);
-    arms.addGeometry(mesh.sphereGeo(0.13, 7, 5, skin), -0.16, -0.6, 0.12);
-    arms.addGeometry(mesh.sphereGeo(0.13, 7, 5, skin), 0.16, -0.6, 0.12);
-    arms.addGeometry(mesh.sphereGeo(0.14, 7, 5, [0.2, 0.2, 0.22]), 0, -0.66, 0.22); // grip
-    arms.addGeometry(mesh.cylinderGeo(0.035, 0.035, 1.15, 6, [0.85, 0.86, 0.9]), 0, -1.2, 0.22); // shaft
-    arms.addGeometry(mesh.boxGeo(0.26, 0.16, 0.12, [0.3, 0.3, 0.34]), 0, -1.78, 0.26); // head
+    [-0.3, 0.3].forEach((x) => {
+      arms.addGeometry(mesh.cylinderGeo(0.085, 0.1, 0.36, 8, shirt), x, -0.16, 0.03);  // upper arm
+      arms.addGeometry(mesh.sphereGeo(0.095, 8, 6, skin), x, -0.34, 0.06);             // elbow
+    });
+    [-0.16, 0.16].forEach((x) => {
+      arms.addGeometry(mesh.cylinderGeo(0.075, 0.085, 0.42, 8, skin), x, -0.52, 0.14); // forearm
+    });
+    arms.addGeometry(mesh.sphereGeo(0.11, 9, 7, glove), 0, -0.7, 0.22);                 // gloved hands
+    const hand = [0, -0.7, 0.22];
 
-    return { body: body.result(), arms: arms.result(), shoulderY };
+    // ---- club (pivot at the grip, shaft down) ----
+    const club = new mesh.Builder();
+    club.addGeometry(mesh.cylinderGeo(0.045, 0.052, 0.22, 7, [0.14, 0.14, 0.17]), 0, -0.1, 0); // grip
+    club.addGeometry(mesh.cylinderGeo(0.025, 0.032, 0.95, 7, [0.86, 0.87, 0.92]), 0, -0.62, 0.015); // shaft
+    club.addGeometry(mesh.boxGeo(0.2, 0.13, 0.1, [0.28, 0.28, 0.32]), 0, -1.12, 0.05);  // head
+
+    return {
+      lower: lower.result(), torso: torso.result(), arms: arms.result(), club: club.result(),
+      hipY, shoulderLocal, hand
+    };
   }
 
   /* --------------------------- alien shopkeeper -------------------------- */

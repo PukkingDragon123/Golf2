@@ -182,6 +182,20 @@
       return out;
     },
 
+    // Rotation matrix about an arbitrary axis (Rodrigues). Axis need not be unit.
+    fromAxisAngle(out, axis, rad) {
+      let x = axis[0], y = axis[1], z = axis[2];
+      const len = Math.hypot(x, y, z);
+      if (len < 1e-9) return M.identity(out);
+      x /= len; y /= len; z /= len;
+      const s = Math.sin(rad), c = Math.cos(rad), t = 1 - c;
+      out[0] = x * x * t + c; out[1] = y * x * t + z * s; out[2] = z * x * t - y * s; out[3] = 0;
+      out[4] = x * y * t - z * s; out[5] = y * y * t + c; out[6] = z * y * t + x * s; out[7] = 0;
+      out[8] = x * z * t + y * s; out[9] = y * z * t - x * s; out[10] = z * z * t + c; out[11] = 0;
+      out[12] = 0; out[13] = 0; out[14] = 0; out[15] = 1;
+      return out;
+    },
+
     // Inverse-transpose upper-left 3x3, packed into a mat3 (Float32Array(9))
     // for transforming normals. Returns identity if non-invertible.
     normalMat3(out, m) {

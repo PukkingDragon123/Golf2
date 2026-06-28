@@ -18,7 +18,7 @@
     accBaseSpeed: 2.1,      // accuracy sweeps per second
     accDead: 0.10,          // accuracy "safe zone" half-width (matches the green band)
     swingDur: 0.64, backswingEnd: 0.34, impactT: 0.5,
-    ballRadius: 0.32
+    ballRadius: 0.24
   };
 
   class Game {
@@ -45,6 +45,8 @@
       this.maxDist = 0;
       this.camYaw = 0; this.camPitch = C.aimPitch;
       this.jetRemaining = 0;
+      this.ballRot = M.create();   // accumulated ball orientation (rolling/spin)
+      this._rotTmp = M.create();
       this._camSnap = true;
       this._safety = 0;
       this.course = null;
@@ -64,10 +66,17 @@
       this.dotMesh = r.createMesh(mesh.sphereGeo(0.14, 6, 5, [1, 1, 1]));
       this.quadMesh = r.createMesh(mesh.quadGeo(1, 1, [1, 1, 1]));
       this.shadowTex = this.particles.tex;
-      const golfer = G.decor.golfer(G.save.ballAccent.map((c) => c / 255));
-      this.golferBody = r.createMesh(golfer.body);
-      this.golferArms = r.createMesh(golfer.arms);
-      this.golferShoulderY = golfer.shoulderY;
+      this._buildGolfer();
+    }
+
+    _buildGolfer() {
+      const r = this.r, gl = r.gl;
+      const del = (m) => { if (m) ['position', 'normal', 'color', 'uv', 'index'].forEach((k) => { if (m[k]) gl.deleteBuffer(m[k]); }); };
+      del(this.gLower); del(this.gTorso); del(this.gArms); del(this.gClub);
+      const g = G.decor.golfer(G.save.ballAccent.map((c) => c / 255));
+      this.gLower = r.createMesh(g.lower); this.gTorso = r.createMesh(g.torso);
+      this.gArms = r.createMesh(g.arms); this.gClub = r.createMesh(g.club);
+      this.gHipY = g.hipY; this.gShoulder = g.shoulderLocal; this.gHand = g.hand;
     }
 
     refreshStats() {
@@ -76,13 +85,7 @@
       const gl = this.r.gl;
       gl.deleteTexture(this.ballTex);
       this.ballTex = this.r.createTexture(G.textures.ball(G.save.ballAccent));
-      // re-skin the golfer to the chosen accent
-      const del = (m) => { if (m) ['position', 'normal', 'color', 'uv', 'index'].forEach((k) => { if (m[k]) gl.deleteBuffer(m[k]); }); };
-      del(this.golferBody); del(this.golferArms);
-      const golfer = G.decor.golfer(G.save.ballAccent.map((c) => c / 255));
-      this.golferBody = this.r.createMesh(golfer.body);
-      this.golferArms = this.r.createMesh(golfer.arms);
-      this.golferShoulderY = golfer.shoulderY;
+      this._buildGolfer();   // re-skin to the chosen accent
       this._computeMaxDist();
     }
 
@@ -153,6 +156,7 @@
       V.set(this.ball.pos, c.teePos[0], y + this.ball.radius, c.teePos[2]);
       V.set(this.ball.vel, 0, 0, 0);
       this.ball.resting = true; this.ball.state = 'rest';
+      M.identity(this.ballRot);
     }
 
     _yawToHole() {
@@ -332,6 +336,13 @@
       else this._updateMenu(dt);
 
       if (this.course && this.course.ambientParticles && this.state !== 'shop') this.course.ambientParticles(this.particles, dt);
+      // realistic ball roll/spin: rotate the ball about the axis perpendicular to travel
+      const v = this.ball.vel, spd = Math.hypot(v[0], v[1], v[2]);
+      if (spd > 0.05 && this.state !== 'shop') {
+        const ang = Math.min(0.7, spd * dt / this.ball.radius);
+        M.fromAxisAngle(this._rotTmp, [v[2], 0, -v[0]], ang);
+        M.multiply(this.ballRot, this._rotTmp, this.ballRot);
+      }
       this.particles.update(dt);
       this.input.endFrame();
       if (this.onFrame) this.onFrame();
@@ -501,16 +512,6 @@
       this._traj = pts;
     }
 
-    // golfer arm-swing angle (radians) from the swing timer
-    _swingAngle() {
-      if (!this.swingActive) return 0.55; // address
-      const t = this.swingT;
-      if (t < C.backswingEnd) return math.lerp(0.55, -2.1, t / C.backswingEnd);
-      if (t < C.impactT) return math.lerp(-2.1, 0.85, (t - C.backswingEnd) / (C.impactT - C.backswingEnd));
-      if (t < C.swingDur) return math.lerp(0.85, -0.4, (t - C.impactT) / (C.swingDur - C.impactT));
-      return -0.4;
-    }
-
     /* ----------------------------- render -------------------------------- */
     render() {
       if (this.state === 'shop' && this.shopScene) { this.shopScene.draw(this.camera, this.time); return; }
@@ -529,21 +530,21 @@
 
       // golfer (during the address/aim/swing of a shot)
       const showGolfer = this.state === 'playing' && (this.phase !== 'watch' || this.swingActive);
-      if (showGolfer) this._drawGolfer(b, gh, env);
+      if (showGolfer) this._drawGolfer(b, env);
 
       // ball shadow
       const hgt = Math.max(0, b[1] - this.ball.radius - gh);
-      const sc = this.ball.radius * 2.4 * (1 + hgt * 0.04);
+      const sc = this.ball.radius * 3.0 * (1 + hgt * 0.05);
       const sm = M.create();
       M.translate(sm, sm, [b[0], gh + 0.05, b[2]]);
       M.rotateX(sm, sm, -Math.PI / 2);
       M.scale(sm, sm, [sc, sc, 1]);
       this.r.draw(this.quadMesh, sm, { texture: this.shadowTex, unlit: true, tint: [0, 0, 0], blend: true, depthWrite: false, opacity: 0.4 / (1 + hgt * 0.08), cull: false });
 
-      // ball
+      // ball (with accumulated roll orientation)
       const bm = M.create();
       M.translate(bm, bm, b);
-      M.rotateY(bm, bm, this.time * 0.6);
+      M.multiply(bm, bm, this.ballRot);
       this.r.draw(this.ballMesh, bm, { texture: this.ballTex, specular: 0.7, rim: 0.25 });
 
       // trajectory preview
@@ -561,21 +562,61 @@
       this.particles.draw(this.camera);
     }
 
-    _drawGolfer(b, gh, env) {
+    // hierarchical, eased, physics-styled swing rig
+    _drawGolfer(b, env) {
       const aim = this.aimDir();
-      const gx = b[0] - aim[0] * 1.25, gz = b[2] - aim[2] * 1.25;
+      const gx = b[0] - aim[0] * 1.3, gz = b[2] - aim[2] * 1.3;
       const gy = this.course.sampleHeight(gx, gz);
-      const face = this.camYaw;
-      const body = M.create();
-      M.translate(body, body, [gx, gy, gz]);
-      M.rotateY(body, body, face);
-      this.r.draw(this.golferBody, body, { specular: 0.15, rim: env.rim * 0.7 });
-      const arms = M.create();
-      M.translate(arms, arms, [gx, gy, gz]);
-      M.rotateY(arms, arms, face);
-      M.translate(arms, arms, [0, this.golferShoulderY, 0]);
-      M.rotateX(arms, arms, this._swingAngle());
-      this.r.draw(this.golferArms, arms, { specular: 0.2, rim: env.rim * 0.7 });
+      const p = this._golferPose();
+
+      const base = M.create();
+      M.translate(base, base, [gx, gy, gz]);
+      M.rotateY(base, base, this.camYaw);
+      M.translate(base, base, [0, 0, p.weight]);   // weight shift along the target line
+
+      const lower = M.create(); M.copy(lower, base);
+      M.rotateY(lower, lower, p.coil * 0.35);       // hips follow the turn a little
+      this.r.draw(this.gLower, lower, { specular: 0.12, rim: env.rim * 0.6 });
+
+      const torso = M.create(); M.copy(torso, base);
+      M.translate(torso, torso, [0, this.gHipY, 0]);
+      M.rotateY(torso, torso, p.coil);
+      M.rotateZ(torso, torso, p.tilt);
+      this.r.draw(this.gTorso, torso, { specular: 0.14, rim: env.rim * 0.7 });
+
+      const arms = M.create(); M.copy(arms, torso);
+      M.translate(arms, arms, [0, this.gShoulder, 0]);
+      M.rotateX(arms, arms, p.arm);
+      this.r.draw(this.gArms, arms, { specular: 0.18, rim: env.rim * 0.7 });
+
+      const club = M.create(); M.copy(club, arms);
+      M.translate(club, club, this.gHand);
+      M.rotateX(club, club, p.wrist);
+      this.r.draw(this.gClub, club, { specular: 0.4, rim: env.rim * 0.6 });
+    }
+
+    _golferPose() {
+      const ss = math.smoothstep, lp = math.lerp;
+      if (!this.swingActive) {
+        const t = this.time;
+        return { coil: Math.sin(t * 1.3) * 0.04, tilt: 0.06, arm: 0.5 + Math.sin(t * 1.3) * 0.04, wrist: -0.05, weight: 0 };
+      }
+      const T = this.swingT, BE = C.backswingEnd, IM = C.impactT, SD = C.swingDur;
+      let coil, arm, wrist, weight;
+      const tilt = 0.07;
+      if (T < BE) {                       // takeaway → top (smooth)
+        const f = ss(0, BE, T);
+        arm = lp(0.5, -2.0, f); coil = lp(0, 0.8, f); wrist = lp(-0.05, -1.2, f); weight = lp(0, -0.12, f);
+      } else if (T < IM) {                // downswing (accelerating)
+        let f = (T - BE) / (IM - BE); f = f * f;
+        arm = lp(-2.0, 0.85, f); coil = lp(0.8, -0.3, f); wrist = lp(-1.2, 0.0, f); weight = lp(-0.12, 0.18, f);
+      } else if (T < SD) {                // follow-through (decelerating)
+        const f = ss(IM, SD, T);
+        arm = lp(0.85, 1.7, f); coil = lp(-0.3, -1.0, f); wrist = lp(0.0, 0.8, f); weight = lp(0.18, 0.08, f);
+      } else {
+        arm = 1.7; coil = -1.0; wrist = 0.8; weight = 0.08;
+      }
+      return { coil, arm, wrist, weight, tilt };
     }
 
     loop(now) {
