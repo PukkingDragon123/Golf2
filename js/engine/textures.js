@@ -38,29 +38,68 @@
     return c;
   }
 
-  // Golf ball: bright white, dimple grid, a colored equator stripe + dot.
-  function ball(accent) {
+  // Golf ball texture by skin id. Equirect-ish 256x256.
+  function ball(skin) {
     const s = 256, c = cv(s), ctx = c.getContext('2d');
-    ctx.fillStyle = '#f6f7f3';
-    ctx.fillRect(0, 0, s, s);
-    // dimples
-    ctx.fillStyle = 'rgba(150,160,150,0.30)';
-    const step = 18;
-    for (let y = 0; y < s; y += step) {
-      for (let x = 0; x < s; x += step) {
+    skin = skin || 'classic';
+    const dimples = (alpha) => {
+      ctx.fillStyle = 'rgba(150,160,150,' + (alpha || 0.28) + ')';
+      const step = 18;
+      for (let y = 0; y < s; y += step) for (let x = 0; x < s; x += step) {
         const ox = (Math.floor(y / step) % 2) * step / 2;
-        ctx.beginPath();
-        ctx.arc(x + ox, y, 5, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(x + ox, y, 5, 0, Math.PI * 2); ctx.fill();
       }
+    };
+    if (skin === 'galaxy') {
+      const g = ctx.createLinearGradient(0, 0, 0, s); g.addColorStop(0, '#1a1040'); g.addColorStop(1, '#2a1a6a');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+      ctx.globalCompositeOperation = 'screen';
+      [[120, 60, 200], [60, 120, 220], [210, 80, 170]].forEach((col, i) => {
+        const x = (i * 90 + 40) % s, y = (i * 70 + 50) % s, r = 70;
+        const rg = ctx.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, 'rgba(' + col + ',0.5)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = rg; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      });
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#fff'; for (let i = 0; i < 120; i++) ctx.fillRect((i * 53) % s, (i * 97) % s, 2, 2);
+      return c;
     }
-    // accent stripe near the seam (u≈0.5)
-    const a = accent || [230, 70, 90];
+    if (skin === 'eight') {
+      ctx.fillStyle = '#141414'; ctx.fillRect(0, 0, s, s);
+      dimples(0.18);
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(s * 0.5, s * 0.5, 40, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#141414'; ctx.font = 'bold 52px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('8', s * 0.5, s * 0.52);
+      return c;
+    }
+    // light base
+    ctx.fillStyle = '#f6f7f3'; ctx.fillRect(0, 0, s, s);
+    if (skin === 'beach') {
+      const cols = ['#ff5b5b', '#ffd23f', '#36d399', '#4d9bff', '#c084fc', '#ff8fb3'];
+      const cx = s / 2, cy = s / 2;
+      for (let i = 0; i < cols.length; i++) { ctx.fillStyle = cols[i]; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, s, (i / cols.length) * 7, ((i + 1) / cols.length) * 7); ctx.closePath(); ctx.fill(); }
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, 22, 0, Math.PI * 2); ctx.fill();
+      dimples(0.12);
+      return c;
+    }
+    dimples();
+    if (skin === 'eyeball') {
+      ctx.fillStyle = '#3aa0ff'; ctx.beginPath(); ctx.arc(s * 0.5, s * 0.5, 46, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(s * 0.5, s * 0.5, 22, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(s * 0.56, s * 0.44, 8, 0, Math.PI * 2); ctx.fill();
+      // red veins
+      ctx.strokeStyle = 'rgba(220,60,60,0.5)'; ctx.lineWidth = 2;
+      for (let i = 0; i < 8; i++) { const a = i / 8 * 7; ctx.beginPath(); ctx.moveTo(s * 0.5 + Math.cos(a) * 48, s * 0.5 + Math.sin(a) * 48); ctx.lineTo(s * 0.5 + Math.cos(a) * 90, s * 0.5 + Math.sin(a) * 90); ctx.stroke(); }
+      return c;
+    }
+    if (skin === 'gold') {
+      const g = ctx.createLinearGradient(0, 0, s, s); g.addColorStop(0, '#fff1b0'); g.addColorStop(0.5, '#ffcc33'); g.addColorStop(1, '#b8860b');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, s, s); dimples(0.2);
+      return c;
+    }
+    // 'classic' & 'stripe'
+    const a = skin === 'stripe' ? [230, 70, 90] : [120, 170, 255];
     ctx.fillStyle = hex(a[0], a[1], a[2]);
     ctx.fillRect(s * 0.47, 0, s * 0.06, s);
-    ctx.beginPath();
-    ctx.arc(s * 0.25, s * 0.5, 14, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(s * 0.25, s * 0.5, 14, 0, Math.PI * 2); ctx.fill();
     return c;
   }
 

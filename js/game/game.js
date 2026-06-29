@@ -19,9 +19,12 @@
   const STATS = { powerMul: 1, dragMul: 1, spinMul: 1, rollControl: 0, antiGrav: 0, magnetRange: 0, magnetStrength: 0, jetCharges: 0 };
 
   const MINIGAMES = {
-    longbomb: { id: 'longbomb', name: 'Long Bomb', emoji: '💥', blurb: 'One mega-swing — furthest landing wins!', unit: 'm', better: 'high' },
-    pinseeker: { id: 'pinseeker', name: 'Pin Seeker', emoji: '🎯', blurb: 'One shot. Closest to the flag wins!', unit: 'm to pin', better: 'low' },
-    holerush: { id: 'holerush', name: 'Hole Rush', emoji: '🏁', blurb: 'Sink it in the fewest swings!', unit: 'strokes', better: 'low' }
+    longbomb: { id: 'longbomb', name: 'Long Bomb', emoji: '💥', blurb: 'One mega-swing — furthest landing wins!', better: 'high' },
+    pinseeker: { id: 'pinseeker', name: 'Pin Seeker', emoji: '🎯', blurb: 'One shot. Closest to the flag wins!', better: 'low' },
+    holerush: { id: 'holerush', name: 'Hole Rush', emoji: '🏁', blurb: 'Sink it in the fewest swings!', better: 'low' },
+    starsmash: { id: 'starsmash', name: 'Star Smash', emoji: '⭐', blurb: 'Fly through as many floating stars as you can in one fling!', better: 'high' },
+    bullseye: { id: 'bullseye', name: 'Bullseye', emoji: '🎯', blurb: 'Land in the target rings round the pin — centre scores big!', better: 'high' },
+    twoshot: { id: 'twoshot', name: 'Take Two', emoji: '🔁', blurb: 'Two shots — your closest to the pin counts.', better: 'low' }
   };
   const ROUNDS_TOTAL = 5;
 
@@ -47,8 +50,10 @@
       this.ballRot = M.create(); this._rotTmp = M.create();
       this._camSnap = true; this._safety = 0; this._turnEndT = 0;
       this.players = []; this.activeIdx = 0; this.turnOrder = []; this.turnPos = 0;
-      this.partyRounds = []; this.roundIdx = 0; this.mode = 'longbomb';
+      this.partyRounds = []; this.roundIdx = 0; this.mode = 'longbomb'; this.roundsTotal = ROUNDS_TOTAL;
       this.strokes = 0; this.holeIndex = 0;
+      this.stars = []; this.targetRings = null; this._achToasts = []; this._partyRoundWins = [];
+      this._starCount = 0; this._shotsThisTurn = 0; this._bestPin = Infinity;
       this.course = null; this.ctx = null; this.gMesh = null;
       this.onStateChange = null; this.onFrame = null; this.toast = null;
       this._traj = null; this._projDist = 0;
@@ -59,10 +64,13 @@
 
     _buildHelpers() {
       const r = this.r, mesh = G.mesh;
-      this.ballTex = r.createTexture(G.textures.ball([245, 245, 248]));
+      this._defaultBallTex = r.createTexture(G.textures.ball('classic'));
+      this.ballTex = this._defaultBallTex;
       this.ballMesh = r.createMesh(mesh.sphereGeo(this.ball.radius, 22, 14, [1, 1, 1]));
       this.dotMesh = r.createMesh(mesh.sphereGeo(0.14, 6, 5, [1, 1, 1]));
       this.quadMesh = r.createMesh(mesh.quadGeo(1, 1, [1, 1, 1]));
+      this.starMesh = r.createMesh(mesh.sphereGeo(0.55, 10, 7, [1, 0.85, 0.3]));
+      this.ringMesh = r.createMesh(mesh.cylinderGeo(1, 1, 0.06, 28, [1, 1, 1], true));
       this.shadowTex = this.particles.tex;
     }
 
@@ -79,7 +87,8 @@
     startParty(players) {
       this.players = players;
       players.forEach((p) => { p.score = 0; p.result = null; p.strokes = 0; G.players.buildMeshes(this.r, p); });
-      this.partyRounds = this._makeRounds(ROUNDS_TOTAL);
+      this._partyRoundWins = players.map(() => 0);
+      this.partyRounds = this._makeRounds(this.roundsTotal);
       this.roundIdx = 0;
       this.beginRound();
     }
@@ -101,6 +110,8 @@
       const r = this.partyRounds[this.roundIdx];
       this.mode = r.game; this.world = G.WORLDS[r.map];
       this._loadCourse(this.world, this.roundIdx % this.world.holes);
+      G.save.setInStat('mapsPlayed', this.world.id);
+      this._setupMode();
       this.players.forEach((p) => { p.result = null; p.strokes = 0; });
       this.turnOrder = this.players.map((_, i) => i);
       this.turnPos = 0;
@@ -109,14 +120,42 @@
       this._emit('roundintro', { round: this.roundIdx + 1, total: this.partyRounds.length, game: MINIGAMES[this.mode], map: this.world });
     }
 
+    _setupMode() {
+      this.stars = []; this.targetRings = null;
+      const c = this.course, tee = c.teePos, hole = c.holePos;
+      if (this.mode === 'starsmash') {
+        let dx = hole[0] - tee[0], dz = hole[2] - tee[2];
+        const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+        const px = -dz, pz = dx, K = 7;
+        for (let k = 0; k < K; k++) {
+          const f = (k + 1) / (K + 1);
+          const bx = tee[0] + (hole[0] - tee[0]) * f, bz = tee[2] + (hole[2] - tee[2]) * f;
+          const off = Math.sin(k * 1.7) * 4;
+          const x = bx + px * off, z = bz + pz * off;
+          const h = 3 + 8 * Math.sin(f * Math.PI);
+          this.stars.push({ pos: [x, c.sampleHeight(x, z) + h, z], r: 1.8, hit: false });
+        }
+      } else if (this.mode === 'bullseye') {
+        this.targetRings = [
+          { r: 9.0, col: [0.30, 0.45, 0.85], pts: 1 },
+          { r: 6.0, col: [0.35, 0.7, 0.95], pts: 2 },
+          { r: 3.5, col: [0.4, 0.85, 0.7], pts: 3 },
+          { r: 1.6, col: [1.0, 0.82, 0.25], pts: 5 }
+        ];
+      }
+    }
+
     startRoundTurns() { this.beginTurn(); }
 
     beginTurn() {
       this.activeIdx = this.turnOrder[this.turnPos];
       const p = this.players[this.activeIdx];
       this.gMesh = p._m;
+      this.ballTex = p._ballTex || this._defaultBallTex;
       this._placeBallOnTee();
       this.strokes = 0; p.strokes = 0;
+      this._starCount = 0; this._shotsThisTurn = 0; this._bestPin = Infinity;
+      if (this.stars) this.stars.forEach((s) => { s.hit = false; });
       this.lastSafe = V.clone(this.ball.pos);
       this.camYaw = this.aimYaw = this._yawToHole();
       this.camPitch = C.aimPitch;
@@ -206,6 +245,7 @@
       this._computeWind();
       if (this.course) this.course.update(dt);
       if (this.toast) { this.toast.t -= dt; if (this.toast.t <= 0) this.toast = null; }
+      if (this.state === 'play' && !this.toast && this._achToasts.length) this.showToast(this._achToasts.shift(), 2.8);
 
       if (this.state === 'play') this._updatePlay(dt);
       else this._updateMenu(dt);
@@ -268,6 +308,18 @@
       this.ctx.wind = this.wind; this.ctx.stats = this.stats;
       G.Physics.update(this.ball, this.ctx, dt, ev);
 
+      if (this.mode === 'starsmash' && this.stars.length) {
+        const b = this.ball.pos;
+        for (const st of this.stars) {
+          if (st.hit) continue;
+          const dx = b[0] - st.pos[0], dy = b[1] - st.pos[1], dz = b[2] - st.pos[2];
+          if (dx * dx + dy * dy + dz * dz < st.r * st.r) {
+            st.hit = true; this._starCount++; this.audio.click();
+            this.particles.burst(st.pos, 16, { speed: 4, col: [1, 0.85, 0.3], life: 0.6, size: 0.4, grav: -3, up: true });
+          }
+        }
+      }
+
       const sp = V.len(this.ball.vel);
       if (sp > 6 && Math.random() < 0.6) this.particles.emit({ p: V.clone(this.ball.pos), v: [0, 0, 0], life: 0.4, size: 0.2, col: [0.9, 0.95, 1], drag: 2, grav: 0 });
       if (ev.bounce) { this.audio.bounce(ev.bounce); this.particles.burst(ev.bouncePos, 6, { speed: 2.5, col: [0.7, 0.7, 0.6], life: 0.4, size: 0.25, grav: -8, up: true }); }
@@ -293,9 +345,10 @@
       const bad = ev.hazard || ev.oob;
       if (bad) { this.audio[(ev.hazard === 'lava' || ev.hazard === 'acid') ? 'sizzle' : 'splash'](); this.particles.burst(ev.hazardPos || b, 18, { speed: 5, col: [0.6, 0.8, 1], life: 0.7, size: 0.4, grav: -8, up: true }); }
       else if (ev.sank) { this.audio.sink(); this.particles.burst([this.course.holePos[0], this.course.holePos[1] + 0.5, this.course.holePos[2]], 50, { speed: 9, col: [1, 0.9, 0.4], life: 1.3, size: 0.5, grav: -10, up: true, cone: 1.2 }); }
+      if (!bad) G.save.maxStat('longest', teeD);
 
       if (this.mode === 'holerush') {
-        if (ev.sank) { p.result = this.strokes; this._finishTurn(p.name + ' sank it in ' + this.strokes + '!'); }
+        if (ev.sank) { if (this.strokes === 1) G.save.addStat('ace'); p.result = this.strokes; this._finishTurn(p.name + ' sank it in ' + this.strokes + '!'); }
         else if (bad) {
           this.strokes++; p.strokes = this.strokes;
           V.copy(this.ball.pos, this.lastSafe); V.set(this.ball.vel, 0, 0, 0); this.ball.resting = true; this.ball.state = 'rest';
@@ -306,12 +359,32 @@
           if (this.strokes >= C.strokeCap) { p.result = C.strokeCap + 1; this._finishTurn(p.name + ' maxed out!'); }
           else this._beginAim();
         }
-      } else { // 1-shot games
+      } else if (this.mode === 'twoshot') {
+        const d = bad ? 9999 : (ev.sank ? 0 : pinD);
+        this._bestPin = Math.min(this._bestPin, d);
+        this._shotsThisTurn++;
+        if (this._shotsThisTurn >= 2) { p.result = this._bestPin; this._finishTurn(p.name + ': best ' + (this._bestPin >= 9999 ? 'lost' : this._bestPin.toFixed(1) + ' m')); }
+        else { this.showToast('Shot 1: ' + (bad ? 'lost' : d.toFixed(1) + ' m') + ' — one more!', 1.8); this._placeBallOnTee(); this._beginAim(); }
+      } else if (this.mode === 'starsmash') {
+        p.result = this._starCount; G.save.maxStat('bestStars', this._starCount);
+        this._finishTurn(p.name + ' grabbed ' + this._starCount + ' ⭐');
+      } else if (this.mode === 'bullseye') {
+        let pts = 0; const rings = this.targetRings;
+        if (!bad) for (let i = rings.length - 1; i >= 0; i--) { if (pinD <= rings[i].r) { pts = rings[i].pts; break; } }
+        if (!bad && pinD <= rings[rings.length - 1].r) G.save.addStat('bull');
+        p.result = pts; this._finishTurn(p.name + ' scored ' + pts + (pts ? ' 🎯' : ' (miss)'));
+      } else { // longbomb / pinseeker
         let r, msg;
         if (this.mode === 'longbomb') { r = bad ? 0 : teeD; msg = bad ? p.name + ' flopped it!' : p.name + ': ' + Math.round(teeD) + ' m'; }
-        else { r = (ev.sank ? 0 : (bad ? 9999 : pinD)); msg = bad ? p.name + ' lost it!' : (ev.sank ? p.name + ' — IN! 0 m' : p.name + ': ' + pinD.toFixed(1) + ' m to pin'); }
+        else { r = (ev.sank ? 0 : (bad ? 9999 : pinD)); if (!bad && r < 1) G.save.addStat('pin1'); msg = bad ? p.name + ' lost it!' : (ev.sank ? p.name + ' — IN! 0 m' : p.name + ': ' + pinD.toFixed(1) + ' m'); }
         p.result = r; this._finishTurn(msg);
       }
+      this._checkAch();
+    }
+
+    _checkAch() {
+      const fresh = G.achievements.evaluate();
+      fresh.forEach((f) => this._achToasts.push('🏆 ' + f.icon + ' ' + f.name + ' — unlocked ' + f.rewards.join(' + ') + '!'));
     }
 
     _finishTurn(msg) {
@@ -331,13 +404,22 @@
       const order = this.players.map((p, i) => ({ p, i, r: p.result == null ? (mg.better === 'high' ? -1 : 1e9) : p.result }));
       order.sort((a, b) => mg.better === 'high' ? b.r - a.r : a.r - b.r);
       const n = this.players.length;
+      // credit a round win only to a clear winner (not on a tie for first)
+      if (order.length && (order.length < 2 || order[0].r !== order[1].r)) this._partyRoundWins[order[0].i] = (this._partyRoundWins[order[0].i] || 0) + 1;
+      let prevR = null, prevPts = 0;
       const ranking = order.map((o, rank) => {
-        const pts = n - rank;   // 1st gets n points, last gets 1
+        // tied results share the better (higher) points of the tie group
+        const pts = (rank > 0 && o.r === prevR) ? prevPts : n - rank;
+        prevR = o.r; prevPts = pts;
         o.p.score += pts;
+        const v = o.p.result;
         let val;
-        if (mg.id === 'holerush') val = (o.p.result == null) ? '—' : (o.p.result >= C.strokeCap + 1 ? 'DNF' : o.p.result + ' strokes');
-        else if (mg.id === 'longbomb') val = (o.p.result ? Math.round(o.p.result) + ' m' : 'flop');
-        else val = (o.p.result == null) ? '—' : (o.p.result >= 9999 ? 'lost' : o.p.result.toFixed(1) + ' m');
+        if (v == null) val = '—';
+        else if (mg.id === 'holerush') val = (v >= C.strokeCap + 1 ? 'DNF' : v + (v === 1 ? ' swing' : ' swings'));
+        else if (mg.id === 'longbomb') val = (v ? Math.round(v) + ' m' : 'flop');
+        else if (mg.id === 'starsmash') val = v + ' ⭐';
+        else if (mg.id === 'bullseye') val = v + ' pts';
+        else val = (v >= 9999 ? 'lost' : v.toFixed(1) + ' m');
         return { name: o.p.name, color: G.players.colorCss(o.p), value: val, points: pts, total: o.p.score };
       });
       this.audio.win();
@@ -354,14 +436,21 @@
     _podium() {
       const standings = this.players.map((p) => ({ name: p.name, color: G.players.colorCss(p), score: p.score }))
         .sort((a, b) => b.score - a.score);
+      G.save.addStat('parties');
+      // "Win a party": only when the host (player 0) finishes top (ties count)
+      const topScore = standings.length ? standings[0].score : -1;
+      if (this.players[0] && this.players[0].score === topScore) G.save.addStat('wins');
+      G.save.maxStat('bestRoundWins', Math.max(0, ...this._partyRoundWins));
+      const fresh = G.achievements.evaluate();
       this.state = 'podium'; this.menuMode = true;
       this.audio.win();
-      this._emit('podium', { standings });
+      this._emit('podium', { standings, unlocked: fresh });
     }
 
     endParty() {
       this.players.forEach((p) => G.players.freeMeshes(this.r, p));
       this.players = [];
+      this.ballTex = this._defaultBallTex; this.stars = []; this.targetRings = null; this._achToasts = [];
       this.startShowcase();
     }
 
@@ -426,6 +515,7 @@
       const env = { lightDir: e.lightDir, lightColor: e.lightColor, ambient: e.ambient, fogColor: e.fogColor, fogDensity: e.fogDensity, clearColor: e.clearColor, specular: e.specular, rim: e.rim };
       this.r.beginFrame(this.camera, env);
       this.course.draw(this.r, this.camera, env, this.particles);
+      this._drawModeObjects();
 
       const b = this.ball.pos;
       const gh = this.course.sampleHeight(b[0], b[2]);
@@ -451,6 +541,30 @@
         }
       }
       this.particles.draw(this.camera);
+    }
+
+    _drawModeObjects() {
+      if (this.state !== 'play' && this.state !== 'roundintro') return;
+      const t = this.time;
+      if (this.mode === 'starsmash' && this.stars.length) {
+        for (const s of this.stars) {
+          if (s.hit) continue;
+          const m = M.create();
+          M.translate(m, m, [s.pos[0], s.pos[1] + Math.sin(t * 3 + s.pos[0]) * 0.2, s.pos[2]]);
+          M.rotateY(m, m, t * 1.6);
+          const pulse = 0.6 + 0.4 * Math.sin(t * 5 + s.pos[2]);
+          this.r.draw(this.starMesh, m, { unlit: true, emissive: [1 * pulse, 0.8 * pulse, 0.2 * pulse], blend: true, additive: true, depthWrite: false });
+        }
+      } else if (this.mode === 'bullseye' && this.targetRings) {
+        const hole = this.course.holePos;
+        const gy = this.course.greenBaseH != null ? this.course.greenBaseH : this.course.sampleHeight(hole[0], hole[2]);
+        for (let i = 0; i < this.targetRings.length; i++) {
+          const ring = this.targetRings[i], m = M.create();
+          M.translate(m, m, [hole[0], gy + 0.06 + i * 0.03, hole[2]]);
+          M.scale(m, m, [ring.r, 1, ring.r]);
+          this.r.draw(this.ringMesh, m, { unlit: true, tint: ring.col, emissive: [ring.col[0] * 0.5, ring.col[1] * 0.5, ring.col[2] * 0.5], blend: true, depthWrite: false, opacity: 0.55, cull: false });
+        }
+      }
     }
 
     _drawGolfer(b, env) {

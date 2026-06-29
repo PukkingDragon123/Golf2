@@ -5,9 +5,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#0a0e14" />
-  <title>Extraterrestrial Golf Cart — Party!</title>
+  <title>Extraterrestrial Golf Party</title>
   <link rel="icon"
-    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%9B%B8%3C/text%3E%3C/svg%3E" />
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%A5%94%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
@@ -16,7 +16,7 @@
 
   <div id="fallback" class="hidden">
     <div class="fallback-box">
-      <h1>🛸 Extraterrestrial Golf Party</h1>
+      <h1>🥔 Extraterrestrial Golf Party</h1>
       <p>This game needs WebGL, which your browser/device didn't provide.</p>
       <p>Try a recent Chrome, Edge, Firefox or Safari with hardware acceleration on.</p>
     </div>
@@ -26,20 +26,17 @@
   <div id="hud" class="hidden">
     <div id="hud-top">
       <div class="hud-pill" id="hud-round">Round 1/5</div>
-      <div class="hud-pill" id="hud-player">🏌️ Player</div>
+      <div class="hud-pill" id="hud-player">🥔 Player</div>
       <div class="hud-pill" id="hud-strokes">Swings 0</div>
       <button id="btn-pause" class="hud-pill btn">☰</button>
     </div>
-
     <div id="standings"></div>
-
     <div id="hud-right">
       <canvas id="minimap" width="150" height="150"></canvas>
       <div class="hud-info" id="hud-dist">0 m to pin</div>
       <div class="hud-info" id="hud-grav">⬇ 1.00 G</div>
       <div class="hud-info" id="hud-wind"><span id="wind-arrow">➤</span> <span id="wind-speed">0</span></div>
     </div>
-
     <div id="power-bar" class="hidden"><div id="power-fill"></div><div id="power-label">POWER</div></div>
     <div id="drag-hint">👉 Drag back from the ball &amp; release to <b>FLING</b> it!</div>
     <div class="hud-info dim" id="hud-gimmick">✦ Gimmick</div>
@@ -52,28 +49,40 @@
     <section id="screen-title" class="screen">
       <div class="title-glow"></div>
       <div class="title-coins-wrap"><button id="btn-mute" class="icon-btn">🔊</button></div>
-      <h1 class="game-title">🛸 EXTRATERRESTRIAL<br><span>GOLF PARTY</span></h1>
-      <p class="subtitle">Grab some pals and fling golf balls across the cosmos. Drag-and-flick chaos, goofy hats, and a gauntlet of minigames on wild alien maps. Last one standing buys the moon-snacks.</p>
+      <h1 class="game-title">🥔 GOLF<br><span>PARTY</span></h1>
+      <p class="subtitle">Grab some pals, customise your potato, and fling golf balls across the cosmos. Drag-and-flick chaos, goofy hats, unlockable skins and a gauntlet of minigames on wild alien maps.</p>
       <div class="menu-buttons">
         <button id="btn-play" class="menu-btn primary">🎉 Play Party</button>
+        <button id="btn-ach" class="menu-btn">🏆 Achievements</button>
         <button id="btn-howto" class="menu-btn">❔ How to Play</button>
       </div>
     </section>
 
-    <!-- Player setup -->
-    <section id="screen-setup" class="screen hidden">
+    <!-- Lobby -->
+    <section id="screen-lobby" class="screen hidden">
       <div class="screen-head">
-        <button id="btn-setup-back" class="back-btn">‹ Back</button>
-        <h2>Who's Playing?</h2>
-        <span class="coins-badge" id="setup-count">2 players</span>
+        <button id="btn-lobby-back" class="back-btn">‹ Back</button>
+        <h2>Party Lobby</h2>
+        <span class="coins-badge" id="room-code">ROOM ABC123</span>
       </div>
-      <div class="count-row">
+      <div class="lobby-bar">
+        <button id="btn-newroom" class="chip">🔁 New room</button>
+        <span class="dim" id="lobby-count">2 players</span>
         <button id="btn-rm-player" class="round-btn">−</button>
-        <span class="dim">add / remove players (1–4)</span>
         <button id="btn-add-player" class="round-btn">+</button>
       </div>
-      <div id="setup-players" class="setup-players"></div>
+      <div id="rounds-row" class="rounds-row"></div>
+      <div id="lobby-players" class="setup-players"></div>
       <button id="btn-start-party" class="menu-btn primary wide">▶ Start the Party!</button>
+    </section>
+
+    <!-- Achievements -->
+    <section id="screen-ach" class="screen hidden">
+      <div class="screen-head">
+        <button id="btn-ach-back" class="back-btn">‹ Back</button>
+        <h2>🏆 Achievements</h2>
+      </div>
+      <div id="ach-list" class="ach-list"></div>
     </section>
 
     <!-- Round intro -->
@@ -103,6 +112,7 @@
         <div class="trophy">🏆</div>
         <h2 id="podium-winner">Winner!</h2>
         <div id="podium-list" class="rr-list"></div>
+        <div id="podium-unlocks" class="unlock"></div>
         <div class="menu-buttons row">
           <button id="btn-podium-again" class="menu-btn primary">Play Again</button>
           <button id="btn-podium-menu" class="menu-btn">Main Menu</button>
@@ -120,20 +130,20 @@
         <div class="howto-col">
           <h3>Fling it!</h3>
           <ul>
-            <li><b>Drag back</b> from the ball like a slingshot — the further you pull, the more power.</li>
+            <li><b>Drag back</b> from the ball like a slingshot — further pull = more power.</li>
             <li><b>Aim</b> by the angle you pull; the glowing arc shows where it'll go.</li>
-            <li><b>Release</b> to fling. Your golfer winds up and whacks it — with a little chaos for fun.</li>
-            <li>Works with mouse or finger. Pass the device around between turns.</li>
+            <li><b>Release</b> to fling. Your potato winds up and whacks it — with a little chaos for fun.</li>
+            <li>Mouse or finger. Pass the device around between turns.</li>
           </ul>
         </div>
         <div class="howto-col">
           <h3>The party</h3>
           <ul>
-            <li>1–4 players, each with a name, colour &amp; goofy hat.</li>
-            <li>💥 <b>Long Bomb</b> — furthest fling wins.</li>
-            <li>🎯 <b>Pin Seeker</b> — closest to the flag wins.</li>
-            <li>🏁 <b>Hole Rush</b> — sink it in the fewest swings.</li>
-            <li>Place high each round to earn points. Most points after 5 rounds takes the crown 👑.</li>
+            <li>1–4 potatoes, each with a name, colour, hat &amp; ball skin.</li>
+            <li>💥 <b>Long Bomb</b> · 🎯 <b>Pin Seeker</b> · 🏁 <b>Hole Rush</b></li>
+            <li>⭐ <b>Star Smash</b> · 🎯 <b>Bullseye</b> · 🔁 <b>Take Two</b></li>
+            <li>Place high each round for points. Most points wins 👑.</li>
+            <li>Earn 🏆 achievements to unlock new hats, ball skins &amp; colours.</li>
           </ul>
         </div>
       </div>
@@ -163,6 +173,7 @@
   <!-- game -->
   <script src="js/game/save.js"></script>
   <script src="js/game/players.js"></script>
+  <script src="js/game/achievements.js"></script>
   <script src="js/game/worlds.js"></script>
   <script src="js/game/decor.js"></script>
   <script src="js/game/physics.js"></script>

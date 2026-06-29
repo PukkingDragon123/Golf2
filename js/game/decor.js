@@ -203,58 +203,71 @@
         b.addGeometry(mesh.cylinderGeo(0.025, 0.025, 0.32, 5, stalk), x, 1.45, 0);
         b.addGeometry(mesh.sphereGeo(0.07, 8, 6, glow), x, 1.63, 0);
       });
+    } else if (hat === 'wizard') {
+      const purp = [0.36, 0.2, 0.62];
+      b.addGeometry(mesh.cylinderGeo(0.44, 0.44, 0.05, 16, purp), 0, 1.2, 0);
+      b.addGeometry(mesh.cylinderGeo(0.0, 0.34, 0.8, 12, purp, false), 0, 1.62, 0);
+      b.addGeometry(mesh.sphereGeo(0.08, 8, 6, [1, 1, 0.6]), 0, 2.02, 0);
+      [[0.12, 1.5, 0.28], [-0.14, 1.7, 0.22], [0.1, 1.85, 0.18]].forEach((s) => b.addGeometry(mesh.sphereGeo(0.05, 6, 5, [1, 1, 0.6]), s[0], s[1], s[2]));
+    } else if (hat === 'party') {
+      const c1 = [1.0, 0.82, 0.2];
+      b.addGeometry(mesh.cylinderGeo(0.0, 0.24, 0.55, 10, c1, false), 0, 1.42, 0);
+      b.addGeometry(mesh.sphereGeo(0.1, 8, 6, [1, 0.4, 0.7]), 0, 1.72, 0);
+      [0.0, 0.2, 0.4].forEach((dy) => b.addGeometry(mesh.cylinderGeo(0.18, 0.24, 0.04, 10, [0.3, 0.7, 1.0]), 0, 1.2 + dy, 0));
+    } else if (hat === 'halo') {
+      const gold = [1.0, 0.86, 0.3];
+      for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2; b.addGeometry(mesh.sphereGeo(0.05, 6, 5, gold), Math.cos(a) * 0.28, 1.62, Math.sin(a) * 0.28); }
     }
   }
 
+  // A cute lumpy POTATO character. Same 4-part rig as before so the swing works.
   function golfer(shirtIn, hat) {
-    const shirt = shirtIn && shirtIn[0] != null ? shirtIn : [0.85, 0.3, 0.35];
-    const skin = [0.86, 0.66, 0.52];
-    const pants = [0.24, 0.27, 0.36];
-    const shoe = [0.11, 0.11, 0.13];
-    const glove = [0.92, 0.92, 0.95];
-    const belt = [0.14, 0.14, 0.17];
-    const hipY = 0.92, shoulderLocal = 0.62;
+    const player = shirtIn && shirtIn[0] != null ? shirtIn : [0.85, 0.3, 0.35];
+    const brown = [0.66, 0.5, 0.32];
+    const potato = [brown[0] * 0.6 + player[0] * 0.4, brown[1] * 0.6 + player[1] * 0.4, brown[2] * 0.6 + player[2] * 0.4];
+    const dpot = mul(potato, 0.82);
+    const glove = [0.95, 0.95, 0.98];
+    const shoe = [0.18, 0.16, 0.2];
+    const hipY = 0.34, shoulderLocal = 0.62;
 
-    // ---- lower body (static): shoes, calves, knees, thighs, hips ----
+    // ---- little legs + feet ----
     const lower = new mesh.Builder();
     [-0.17, 0.17].forEach((x) => {
-      lower.addGeometry(mesh.boxGeo(0.3, 0.13, 0.52, shoe), x, 0.07, 0.12);
-      lower.addGeometry(mesh.cylinderGeo(0.12, 0.14, 0.4, 9, pants), x, 0.36, 0);   // calf
-      lower.addGeometry(mesh.sphereGeo(0.14, 9, 7, pants), x, 0.58, 0);             // knee
-      lower.addGeometry(mesh.cylinderGeo(0.15, 0.17, 0.34, 9, pants), x, 0.78, 0);  // thigh
+      lower.addGeometry(mesh.boxGeo(0.26, 0.12, 0.42, shoe), x, 0.06, 0.07);
+      lower.addGeometry(mesh.cylinderGeo(0.1, 0.12, 0.28, 8, dpot), x, 0.22, 0);
     });
-    lower.addGeometry(mesh.cylinderGeo(0.3, 0.32, 0.26, 12, pants), 0, 0.92, 0);    // hips
-    lower.addGeometry(mesh.cylinderGeo(0.31, 0.31, 0.08, 14, belt), 0, 0.86, 0);    // belt
 
-    // ---- torso (pivot at hip joint, extends up to head) ----
+    // ---- potato body (pivot at hips) ----
     const torso = new mesh.Builder();
-    torso.addGeometry(mesh.cylinderGeo(0.29, 0.31, 0.34, 12, shirt), 0, 0.18, 0);   // waist
-    torso.addGeometry(mesh.cylinderGeo(0.33, 0.29, 0.4, 12, shirt), 0, 0.52, 0);    // chest
-    torso.addGeometry(mesh.sphereGeo(0.33, 12, 9, shirt), 0, 0.5, 0);
-    torso.addGeometry(mesh.boxGeo(0.66, 0.2, 0.26, mul(shirt, 1.04)), 0, 0.66, 0);  // shoulder yoke
-    torso.addGeometry(mesh.cylinderGeo(0.14, 0.16, 0.1, 10, mul(shirt, 0.8)), 0, 0.78, 0); // collar
-    torso.addGeometry(mesh.cylinderGeo(0.095, 0.1, 0.16, 8, skin), 0, 0.88, 0);     // neck
-    torso.addGeometry(mesh.sphereGeo(0.25, 14, 11, skin), 0, 1.12, 0);              // head
-    torso.addGeometry(mesh.boxGeo(0.075, 0.07, 0.09, mul(skin, 0.96)), 0, 1.1, 0.24); // nose
-    addHat(torso, hat === undefined ? 'cap' : hat, shirt);                          // customizable hat
+    torso.addGeometry(mesh.sphereGeo(0.62, 18, 13, potato), 0, 0.55, 0);
+    torso.addGeometry(mesh.sphereGeo(0.46, 14, 11, mul(potato, 1.03)), 0, 0.82, 0);
+    torso.addGeometry(mesh.sphereGeo(0.45, 14, 11, mul(potato, 0.97)), 0, 0.3, 0.04);
+    // lumps
+    [[0.4, 0.62, 0.42], [-0.42, 0.5, 0.36], [0.34, 0.92, 0.28], [-0.3, 0.85, 0.32], [0.5, 0.42, -0.18], [-0.46, 0.66, -0.2]].forEach((p) =>
+      torso.addGeometry(mesh.sphereGeo(0.13, 8, 6, mul(potato, 0.92)), p[0], p[1], p[2]));
+    // colour band / scarf (player colour)
+    torso.addGeometry(mesh.cylinderGeo(0.6, 0.6, 0.14, 18, player), 0, 0.5, 0);
+    // face: eyes + brows + smile
+    [-0.2, 0.2].forEach((x) => {
+      torso.addGeometry(mesh.sphereGeo(0.13, 10, 8, [0.99, 0.99, 1]), x, 0.74, 0.5);
+      torso.addGeometry(mesh.sphereGeo(0.06, 8, 6, [0.06, 0.06, 0.09]), x, 0.74, 0.59);
+      torso.addGeometry(mesh.boxGeo(0.16, 0.04, 0.04, dpot), x, 0.9, 0.5);
+    });
+    torso.addGeometry(mesh.boxGeo(0.24, 0.06, 0.06, [0.3, 0.14, 0.12]), 0, 0.56, 0.58);
+    addHat(torso, hat === undefined ? 'cap' : hat, player);
 
-    // ---- arms + hands (pivot at the shoulders/sternum, hanging down) ----
+    // ---- stubby arms holding the club (pivot at the shoulders) ----
     const arms = new mesh.Builder();
-    [-0.3, 0.3].forEach((x) => {
-      arms.addGeometry(mesh.cylinderGeo(0.085, 0.1, 0.36, 8, shirt), x, -0.16, 0.03);  // upper arm
-      arms.addGeometry(mesh.sphereGeo(0.095, 8, 6, skin), x, -0.34, 0.06);             // elbow
-    });
-    [-0.16, 0.16].forEach((x) => {
-      arms.addGeometry(mesh.cylinderGeo(0.075, 0.085, 0.42, 8, skin), x, -0.52, 0.14); // forearm
-    });
-    arms.addGeometry(mesh.sphereGeo(0.11, 9, 7, glove), 0, -0.7, 0.22);                 // gloved hands
-    const hand = [0, -0.7, 0.22];
+    [-0.5, 0.5].forEach((x) => arms.addGeometry(mesh.cylinderGeo(0.09, 0.1, 0.4, 8, dpot), x, -0.12, 0.06));
+    [-0.22, 0.22].forEach((x) => arms.addGeometry(mesh.cylinderGeo(0.07, 0.08, 0.34, 8, dpot), x, -0.34, 0.2));
+    arms.addGeometry(mesh.sphereGeo(0.1, 9, 7, glove), 0, -0.46, 0.3);
+    const hand = [0, -0.46, 0.3];
 
-    // ---- club (pivot at the grip, shaft down) ----
+    // ---- club ----
     const club = new mesh.Builder();
-    club.addGeometry(mesh.cylinderGeo(0.045, 0.052, 0.22, 7, [0.14, 0.14, 0.17]), 0, -0.1, 0); // grip
-    club.addGeometry(mesh.cylinderGeo(0.025, 0.032, 0.95, 7, [0.86, 0.87, 0.92]), 0, -0.62, 0.015); // shaft
-    club.addGeometry(mesh.boxGeo(0.2, 0.13, 0.1, [0.28, 0.28, 0.32]), 0, -1.12, 0.05);  // head
+    club.addGeometry(mesh.cylinderGeo(0.045, 0.052, 0.2, 7, [0.14, 0.14, 0.17]), 0, -0.09, 0);
+    club.addGeometry(mesh.cylinderGeo(0.025, 0.032, 0.85, 7, [0.86, 0.87, 0.92]), 0, -0.56, 0.015);
+    club.addGeometry(mesh.boxGeo(0.2, 0.13, 0.1, [0.28, 0.28, 0.32]), 0, -1.0, 0.05);
 
     return {
       lower: lower.result(), torso: torso.result(), arms: arms.result(), club: club.result(),

@@ -278,7 +278,7 @@
       this.flagColor = flagColor;
 
       // cart + googly eyes + hover-glow rings
-      this.cartMesh = this._track(r.createMesh(G.decor.cart(G.save.ballAccent.map((c) => c / 255))));
+      this.cartMesh = this._track(r.createMesh(G.decor.cart([0.92, 0.82, 0.28])));
       this.eyeWhiteMesh = this._track(r.createMesh(mesh.sphereGeo(1, 12, 9, [0.99, 0.99, 1])));
       this.eyePupilMesh = this._track(r.createMesh(mesh.sphereGeo(1, 8, 6, [0.05, 0.05, 0.08])));
       this.hoverRingMesh = this._track(r.createMesh(mesh.cylinderGeo(0.55, 0.55, 0.06, 14, [0.4, 1, 0.7], false)));

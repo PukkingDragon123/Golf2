@@ -23,7 +23,12 @@
       const pn = $('hud-player');
       if (pn && p) { pn.textContent = '🏌️ ' + p.name; pn.style.color = G.players.colorCss(p); }
       const sEl = $('hud-strokes');
-      if (sEl) { if (game.mode === 'holerush') { sEl.classList.remove('hidden'); sEl.textContent = 'Swings ' + game.strokes; } else sEl.classList.add('hidden'); }
+      if (sEl) {
+        if (game.mode === 'holerush') { sEl.classList.remove('hidden'); sEl.textContent = 'Swings ' + game.strokes; }
+        else if (game.mode === 'starsmash') { sEl.classList.remove('hidden'); sEl.textContent = '⭐ ' + (game._starCount || 0); }
+        else if (game.mode === 'twoshot') { sEl.classList.remove('hidden'); sEl.textContent = 'Shot ' + Math.min(2, (game._shotsThisTurn || 0) + 1) + '/2'; }
+        else sEl.classList.add('hidden');
+      }
 
       // standings
       const st = $('standings');
