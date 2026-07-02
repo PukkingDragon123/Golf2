@@ -43,6 +43,19 @@
     <div id="toast"></div>
   </div>
 
+  <!-- ====================== Ball Dash race UI ====================== -->
+  <div id="race-ui" class="hidden">
+    <div id="race-bars"></div>
+    <div id="race-count" class="hidden">3</div>
+    <div id="race-hint">Mash your keys! &nbsp; <b>P1</b> A/S · <b>P2</b> F/G · <b>P3</b> H/J · <b>P4</b> K/L &nbsp;— or tap your pad</div>
+    <div id="race-pads">
+      <button class="race-pad" data-idx="0"><span class="pad-tap">TAP!</span><span class="pad-name">P1</span></button>
+      <button class="race-pad" data-idx="1"><span class="pad-tap">TAP!</span><span class="pad-name">P2</span></button>
+      <button class="race-pad" data-idx="2"><span class="pad-tap">TAP!</span><span class="pad-name">P3</span></button>
+      <button class="race-pad" data-idx="3"><span class="pad-tap">TAP!</span><span class="pad-name">P4</span></button>
+    </div>
+  </div>
+
   <!-- ====================== Overlay screens ====================== -->
   <div id="overlay">
     <!-- Title -->
@@ -58,22 +71,30 @@
       </div>
     </section>
 
-    <!-- Lobby -->
-    <section id="screen-lobby" class="screen hidden">
-      <div class="screen-head">
-        <button id="btn-lobby-back" class="back-btn">‹ Back</button>
-        <h2>Party Lobby</h2>
-        <span class="coins-badge" id="room-code">ROOM ABC123</span>
+    <!-- Lobby: live 3D character studio -->
+    <section id="screen-lobby" class="screen studio hidden">
+      <div class="studio-stage">
+        <div id="studio-nameplate" class="nameplate"></div>
       </div>
-      <div class="lobby-bar">
-        <button id="btn-newroom" class="chip">🔁 New room</button>
-        <span class="dim" id="lobby-count">2 players</span>
-        <button id="btn-rm-player" class="round-btn">−</button>
-        <button id="btn-add-player" class="round-btn">+</button>
+      <div class="studio-panel">
+        <div class="studio-top">
+          <button id="btn-lobby-back" class="back-btn">‹</button>
+          <span class="coins-badge" id="room-code">ROOM ABC123</span>
+          <button id="btn-newroom" class="chip" title="New room">🔁</button>
+        </div>
+        <div class="studio-count">
+          <button id="btn-rm-player" class="round-btn">−</button>
+          <span id="lobby-count">2 players</span>
+          <button id="btn-add-player" class="round-btn">+</button>
+        </div>
+        <div id="player-tabs" class="player-tabs"></div>
+        <input id="studio-name" class="studio-nameinput" maxlength="10" placeholder="Name" />
+        <div class="pick-block"><div class="pick-label">🎨 Colour</div><div id="pick-colors" class="pick-grid"></div></div>
+        <div class="pick-block"><div class="pick-label">🎩 Hat</div><div id="pick-hats" class="pick-row"></div></div>
+        <div class="pick-block"><div class="pick-label">⚪ Ball</div><div id="pick-balls" class="pick-row"></div></div>
+        <div class="pick-block"><div class="pick-label">🎲 Rounds</div><div id="rounds-row" class="rounds-row"></div></div>
+        <button id="btn-start-party" class="menu-btn primary wide">▶ Start the Party!</button>
       </div>
-      <div id="rounds-row" class="rounds-row"></div>
-      <div id="lobby-players" class="setup-players"></div>
-      <button id="btn-start-party" class="menu-btn primary wide">▶ Start the Party!</button>
     </section>
 
     <!-- Achievements -->
@@ -135,13 +156,19 @@
             <li><b>Release</b> to fling. Your potato winds up and whacks it — with a little chaos for fun.</li>
             <li>Mouse or finger. Pass the device around between turns.</li>
           </ul>
+          <h3>🏃 Ball Dash</h3>
+          <ul>
+            <li>Everyone runs <b>at once</b> — first potato to the ball hits first!</li>
+            <li><b>Alternate</b> your two keys to sprint: <b>P1</b> A/S · <b>P2</b> F/G · <b>P3</b> H/J · <b>P4</b> K/L.</li>
+            <li>On touch, hammer your colour <b>pad</b> at the bottom.</li>
+          </ul>
         </div>
         <div class="howto-col">
           <h3>The party</h3>
           <ul>
-            <li>1–4 potatoes, each with a name, colour, hat &amp; ball skin.</li>
+            <li>Build your spud in the <b>Studio</b> — name, colour, hat &amp; ball skin.</li>
             <li>💥 <b>Long Bomb</b> · 🎯 <b>Pin Seeker</b> · 🏁 <b>Hole Rush</b></li>
-            <li>⭐ <b>Star Smash</b> · 🎯 <b>Bullseye</b> · 🔁 <b>Take Two</b></li>
+            <li>⭐ <b>Star Smash</b> · 🎯 <b>Bullseye</b> · 🔁 <b>Take Two</b> · 🏃 <b>Ball Dash</b></li>
             <li>Place high each round for points. Most points wins 👑.</li>
             <li>Earn 🏆 achievements to unlock new hats, ball skins &amp; colours.</li>
           </ul>

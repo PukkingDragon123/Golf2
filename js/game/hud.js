@@ -15,7 +15,10 @@
 
     update(game) {
       const playing = game.state === 'play';
-      const hudEl = $('hud'); if (hudEl) hudEl.classList.toggle('hidden', !playing);
+      const race = playing && game.mode === 'race';
+      const hudEl = $('hud'); if (hudEl) hudEl.classList.toggle('hidden', !playing || race);
+      const raceEl = $('race-ui'); if (raceEl) raceEl.classList.toggle('hidden', !race);
+      if (race) { this._race(game); return; }
       if (!playing || !game.course) return;
       const mg = game.miniGame(), p = game.activePlayer();
 
@@ -69,6 +72,42 @@
     },
 
     _txt(id, t) { const el = $(id); if (el && el.textContent !== t) el.textContent = t; },
+
+    _race(game) {
+      const cd = $('race-count');
+      if (cd) {
+        let show = false, txt = '';
+        if (game.raceState === 'countdown') { const n = Math.min(3, Math.ceil(game._raceCountdown)); if (n >= 1) { txt = String(n); show = true; } else { txt = 'GO!'; show = true; } }
+        else if (game.raceState === 'run' && game._raceT < 0.7) { txt = 'GO!'; show = true; }
+        cd.classList.toggle('hidden', !show);
+        if (show && cd.textContent !== txt) { cd.textContent = txt; cd.style.animation = 'none'; void cd.offsetWidth; cd.style.animation = ''; }
+      }
+      const bars = $('race-bars');
+      if (bars) {
+        if (bars._n !== game.players.length) {
+          bars.innerHTML = ''; bars._n = game.players.length;
+          game.players.forEach(() => { const row = document.createElement('div'); row.className = 'race-bar'; row.innerHTML = '<span class="rb-name"></span><div class="rb-track"><div class="rb-fill"></div></div><span class="rb-pos"></span>'; bars.appendChild(row); });
+        }
+        const ranks = game.racers ? game.racers.slice().sort((a, b) => b.pos - a.pos) : [];
+        game.players.forEach((p, i) => {
+          const row = bars.children[i], rc = game.racers ? game.racers[i] : null;
+          const frac = rc ? Math.min(1, rc.pos / 20) : 0;
+          const nm = row.querySelector('.rb-name'); nm.textContent = p.name; nm.style.color = G.players.colorCss(p);
+          const f = row.querySelector('.rb-fill'); f.style.width = (frac * 100).toFixed(0) + '%'; f.style.background = G.players.colorCss(p);
+          const pos = row.querySelector('.rb-pos'); pos.textContent = rc && rc.finishT != null ? '✓' : (rc ? ('#' + (ranks.indexOf(rc) + 1)) : '');
+        });
+      }
+      const pads = $('race-pads');
+      if (pads) {
+        for (let i = 0; i < 4; i++) {
+          const pad = pads.children[i]; if (!pad) continue;
+          const on = i < game.players.length;
+          pad.classList.toggle('hidden', !on);
+          if (on) { pad.style.background = G.players.colorCss(game.players[i]); const lbl = pad.querySelector('.pad-name'); if (lbl && lbl.textContent !== game.players[i].name) lbl.textContent = game.players[i].name; }
+        }
+      }
+      const toastEl = $('toast'); if (toastEl) { if (game.toast) { toastEl.textContent = game.toast.msg; toastEl.classList.add('show'); } else toastEl.classList.remove('show'); }
+    },
 
     _minimap(game) {
       const ctx = this.miniCtx; if (!ctx) return;

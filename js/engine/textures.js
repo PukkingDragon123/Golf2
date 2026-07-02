@@ -250,5 +250,16 @@
     return c;
   }
 
-  G.textures = { groundDetail, ball, water, lava, sky };
+  // Warm studio cyclorama — a soft radial spotlight pool for the character stage.
+  function studioBackdrop() {
+    const s = 512, c = cv(s), ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(s * 0.42, s * 0.42, s * 0.04, s * 0.5, s * 0.55, s * 0.72);
+    g.addColorStop(0, '#4a2c66'); g.addColorStop(0.45, '#2a1840'); g.addColorStop(1, '#120a1e');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+    ctx.fillStyle = 'rgba(255,255,255,0.035)';
+    for (let i = 0; i < 90; i++) { ctx.beginPath(); ctx.arc((i * 79) % s, (i * 131) % s, 1.6, 0, Math.PI * 2); ctx.fill(); }
+    return c;
+  }
+
+  G.textures = { groundDetail, ball, water, lava, sky, studioBackdrop };
 })(window.GOLF = window.GOLF || {});

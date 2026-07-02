@@ -220,53 +220,55 @@
     }
   }
 
-  // A cute lumpy POTATO character. Same 4-part rig as before so the swing works.
+  // A clean, cute POTATO character: ONE smooth tapered ovoid body (no lumps, no
+  // z-fighting), player colour on a scarf + feet + rim so it stays a spud but
+  // reads as "yours". Same 4-part rig (lower / torso / arms / club) so the swing,
+  // run and studio poses all work.
   function golfer(shirtIn, hat) {
     const player = shirtIn && shirtIn[0] != null ? shirtIn : [0.85, 0.3, 0.35];
-    const brown = [0.66, 0.5, 0.32];
-    const potato = [brown[0] * 0.6 + player[0] * 0.4, brown[1] * 0.6 + player[1] * 0.4, brown[2] * 0.6 + player[2] * 0.4];
+    const tan = [0.80, 0.63, 0.42];
+    // keep it a potato: only lightly tint the tan body toward the player colour
+    const potato = [tan[0] * 0.82 + player[0] * 0.18, tan[1] * 0.82 + player[1] * 0.18, tan[2] * 0.82 + player[2] * 0.18];
     const dpot = mul(potato, 0.82);
-    const glove = [0.95, 0.95, 0.98];
-    const shoe = [0.18, 0.16, 0.2];
+    const glove = [0.96, 0.96, 0.99];
+    const shoe = mul(player, 0.6);
     const hipY = 0.34, shoulderLocal = 0.62;
 
-    // ---- little legs + feet ----
+    // ---- little legs + rounded feet (pivot at the golfer base) ----
     const lower = new mesh.Builder();
-    [-0.17, 0.17].forEach((x) => {
-      lower.addGeometry(mesh.boxGeo(0.26, 0.12, 0.42, shoe), x, 0.06, 0.07);
-      lower.addGeometry(mesh.cylinderGeo(0.1, 0.12, 0.28, 8, dpot), x, 0.22, 0);
+    [-0.16, 0.16].forEach((x) => {
+      lower.addGeometry(mesh.cylinderGeo(0.08, 0.1, 0.18, 8, dpot), x, 0.2, 0);
+      lower.addGeometryT(mesh.ellipsoidGeo(0.15, 0.09, 0.22, 9, 6, shoe), x, 0.07, 0.06, 1, (x < 0 ? 0.16 : -0.16), null);
     });
 
-    // ---- potato body (pivot at hips) ----
+    // ---- potato body: a single clean ovoid (pivot at the hips) ----
     const torso = new mesh.Builder();
-    torso.addGeometry(mesh.sphereGeo(0.62, 18, 13, potato), 0, 0.55, 0);
-    torso.addGeometry(mesh.sphereGeo(0.46, 14, 11, mul(potato, 1.03)), 0, 0.82, 0);
-    torso.addGeometry(mesh.sphereGeo(0.45, 14, 11, mul(potato, 0.97)), 0, 0.3, 0.04);
-    // lumps
-    [[0.4, 0.62, 0.42], [-0.42, 0.5, 0.36], [0.34, 0.92, 0.28], [-0.3, 0.85, 0.32], [0.5, 0.42, -0.18], [-0.46, 0.66, -0.2]].forEach((p) =>
-      torso.addGeometry(mesh.sphereGeo(0.13, 8, 6, mul(potato, 0.92)), p[0], p[1], p[2]));
-    // colour band / scarf (player colour)
-    torso.addGeometry(mesh.cylinderGeo(0.6, 0.6, 0.14, 18, player), 0, 0.5, 0);
-    // face: eyes + brows + smile
-    [-0.2, 0.2].forEach((x) => {
-      torso.addGeometry(mesh.sphereGeo(0.13, 10, 8, [0.99, 0.99, 1]), x, 0.74, 0.5);
-      torso.addGeometry(mesh.sphereGeo(0.06, 8, 6, [0.06, 0.06, 0.09]), x, 0.74, 0.59);
-      torso.addGeometry(mesh.boxGeo(0.16, 0.04, 0.04, dpot), x, 0.9, 0.5);
+    torso.addGeometry(mesh.ellipsoidGeo(0.5, 0.64, 0.47, 22, 16, potato, 0.8), 0, 0.55, 0);
+    // scarf collar in the player colour (instant identity, no overlap noise)
+    torso.addGeometry(mesh.cylinderGeo(0.45, 0.5, 0.13, 22, player), 0, 0.3, 0);
+    // face: glossy eyes + pupils + hi-lights, brows, blush, smile — all proud of
+    // the surface so nothing z-fights.
+    [-0.18, 0.18].forEach((x) => {
+      torso.addGeometry(mesh.sphereGeo(0.115, 12, 9, [0.99, 0.99, 1]), x, 0.70, 0.42);
+      torso.addGeometry(mesh.sphereGeo(0.058, 8, 6, [0.05, 0.05, 0.09]), x, 0.69, 0.50);
+      torso.addGeometry(mesh.sphereGeo(0.022, 6, 5, [1, 1, 1]), x + 0.03, 0.73, 0.53);
+      torso.addGeometry(mesh.boxGeo(0.15, 0.04, 0.05, mul(potato, 0.68)), x, 0.86, 0.42);        // brow
+      torso.addGeometry(mesh.sphereGeo(0.052, 7, 5, [1.0, 0.62, 0.58]), x * 1.75, 0.58, 0.38);   // blush
     });
-    torso.addGeometry(mesh.boxGeo(0.24, 0.06, 0.06, [0.3, 0.14, 0.12]), 0, 0.56, 0.58);
+    torso.addGeometry(mesh.ellipsoidGeo(0.1, 0.045, 0.05, 8, 6, [0.3, 0.13, 0.10]), 0, 0.54, 0.45); // smile
     addHat(torso, hat === undefined ? 'cap' : hat, player);
 
     // ---- stubby arms holding the club (pivot at the shoulders) ----
     const arms = new mesh.Builder();
-    [-0.5, 0.5].forEach((x) => arms.addGeometry(mesh.cylinderGeo(0.09, 0.1, 0.4, 8, dpot), x, -0.12, 0.06));
-    [-0.22, 0.22].forEach((x) => arms.addGeometry(mesh.cylinderGeo(0.07, 0.08, 0.34, 8, dpot), x, -0.34, 0.2));
-    arms.addGeometry(mesh.sphereGeo(0.1, 9, 7, glove), 0, -0.46, 0.3);
+    [-0.44, 0.44].forEach((x) => arms.addGeometry(mesh.sphereGeo(0.1, 9, 7, dpot), x, -0.02, 0.02));
+    [-0.3, 0.3].forEach((x) => arms.addGeometry(mesh.cylinderGeo(0.06, 0.08, 0.42, 8, dpot), x, -0.24, 0.12));
+    arms.addGeometry(mesh.sphereGeo(0.11, 9, 7, glove), 0, -0.46, 0.3);
     const hand = [0, -0.46, 0.3];
 
     // ---- club ----
     const club = new mesh.Builder();
     club.addGeometry(mesh.cylinderGeo(0.045, 0.052, 0.2, 7, [0.14, 0.14, 0.17]), 0, -0.09, 0);
-    club.addGeometry(mesh.cylinderGeo(0.025, 0.032, 0.85, 7, [0.86, 0.87, 0.92]), 0, -0.56, 0.015);
+    club.addGeometry(mesh.cylinderGeo(0.024, 0.03, 0.85, 7, [0.86, 0.87, 0.92]), 0, -0.56, 0.015);
     club.addGeometry(mesh.boxGeo(0.2, 0.13, 0.1, [0.28, 0.28, 0.32]), 0, -1.0, 0.05);
 
     return {

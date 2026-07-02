@@ -39,26 +39,33 @@
   function cycleHat(p) { const u = unlockedHats(); if (u.indexOf(p.hat) < 0) p.hat = u[0]; else p.hat = nextIn(u, p.hat); }
   function cycleBall(p) { const u = unlockedBalls(); if (u.indexOf(p.ball) < 0) p.ball = u[0]; else p.ball = nextIn(u, p.ball); }
 
-  function buildMeshes(renderer, p) {
-    freeMeshes(renderer, p);
+  function buildBody(renderer, p) {
+    freeBody(renderer, p);
     const g = G.decor.golfer(color01(p), hatId(p));
     p._m = {
       lower: renderer.createMesh(g.lower), torso: renderer.createMesh(g.torso),
       arms: renderer.createMesh(g.arms), club: renderer.createMesh(g.club),
       hipY: g.hipY, shoulderLocal: g.shoulderLocal, hand: g.hand
     };
-    p._ballTex = renderer.createTexture(G.textures.ball(p.ball));
     return p._m;
   }
-  function freeMeshes(renderer, p) {
+  function buildBall(renderer, p) { freeBall(renderer, p); p._ballTex = renderer.createTexture(G.textures.ball(p.ball)); return p._ballTex; }
+  function buildMeshes(renderer, p) { buildBody(renderer, p); buildBall(renderer, p); return p._m; }
+  // Rebuild just what changed — avoids GPU buffer/texture thrash when cycling.
+  function rebuildBody(renderer, p) { buildBody(renderer, p); }
+  function rebuildBall(renderer, p) { buildBall(renderer, p); }
+
+  function freeBody(renderer, p) {
     const gl = renderer.gl;
     if (p._m) { ['lower', 'torso', 'arms', 'club'].forEach((k) => { const m = p._m[k]; if (m) ['position', 'normal', 'color', 'uv', 'index'].forEach((b) => { if (m[b]) gl.deleteBuffer(m[b]); }); }); p._m = null; }
-    if (p._ballTex) { gl.deleteTexture(p._ballTex); p._ballTex = null; }
   }
+  function freeBall(renderer, p) { const gl = renderer.gl; if (p._ballTex) { gl.deleteTexture(p._ballTex); p._ballTex = null; } }
+  function freeMeshes(renderer, p) { freeBody(renderer, p); freeBall(renderer, p); }
 
   G.players = {
     COLORS, HATS, HAT_LABEL, BALLS, BALL_LABEL, defaults,
     color01, colorCss, hatId, cycleColor, cycleHat, cycleBall,
-    unlockedColors, unlockedHats, unlockedBalls, buildMeshes, freeMeshes
+    unlockedColors, unlockedHats, unlockedBalls,
+    buildMeshes, rebuildBody, rebuildBall, freeMeshes
   };
 })(window.GOLF = window.GOLF || {});

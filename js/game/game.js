@@ -24,9 +24,21 @@
     holerush: { id: 'holerush', name: 'Hole Rush', emoji: '🏁', blurb: 'Sink it in the fewest swings!', better: 'low' },
     starsmash: { id: 'starsmash', name: 'Star Smash', emoji: '⭐', blurb: 'Fly through as many floating stars as you can in one fling!', better: 'high' },
     bullseye: { id: 'bullseye', name: 'Bullseye', emoji: '🎯', blurb: 'Land in the target rings round the pin — centre scores big!', better: 'high' },
-    twoshot: { id: 'twoshot', name: 'Take Two', emoji: '🔁', blurb: 'Two shots — your closest to the pin counts.', better: 'low' }
+    twoshot: { id: 'twoshot', name: 'Take Two', emoji: '🔁', blurb: 'Two shots — your closest to the pin counts.', better: 'low' },
+    race: { id: 'race', name: 'Ball Dash', emoji: '🏃', blurb: 'Everyone runs at once — mash to sprint, first potato to the ball hits first!', better: 'low' }
   };
   const ROUNDS_TOTAL = 5;
+
+  // Ball Dash race tuning + per-player key pairs (spread across the board so up
+  // to four people can crowd one keyboard). Touch uses DOM pads (see hud/ui).
+  const RACE = { len: 20, step: 0.95, stepHalf: 0.5, decay: 3.0, vmax: 9, cap: 14, laneGap: 1.95, countdown: 3.2, dnf: 100 };
+  const RACE_KEYS = [['KeyA', 'KeyS'], ['KeyF', 'KeyG'], ['KeyH', 'KeyJ'], ['KeyK', 'KeyL']];
+
+  const _n3 = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+  const STUDIO_ENV = {
+    lightDir: _n3([0.4, 0.82, 0.5]), lightColor: [1.05, 1.0, 0.92], ambient: [0.42, 0.44, 0.52],
+    fogColor: [0.09, 0.06, 0.16], fogDensity: 0, clearColor: [0.09, 0.06, 0.16], specular: 0.32, rim: 0.55
+  };
 
   class Game {
     constructor(renderer, canvas) {
@@ -54,6 +66,11 @@
       this.strokes = 0; this.holeIndex = 0;
       this.stars = []; this.targetRings = null; this._achToasts = []; this._partyRoundWins = [];
       this._starCount = 0; this._shotsThisTurn = 0; this._bestPin = Infinity;
+      // studio (character select) + race (Ball Dash) state
+      this.studioMode = false; this.studioIdx = 0; this._studioReact = 0;
+      this.racers = null; this.raceState = null; this._raceT = 0; this._raceCountdown = 0;
+      this._raceDir = [0, 0, 1]; this._racePerp = [1, 0, 0]; this._raceStart = [0, 0, 0]; this._raceGroundY = 0;
+      this._raceFinished = 0; this._raceDoneT = 0;
       this.course = null; this.ctx = null; this.gMesh = null;
       this.onStateChange = null; this.onFrame = null; this.toast = null;
       this._traj = null; this._projDist = 0;
@@ -72,6 +89,13 @@
       this.starMesh = r.createMesh(mesh.sphereGeo(0.55, 10, 7, [1, 0.85, 0.3]));
       this.ringMesh = r.createMesh(mesh.cylinderGeo(1, 1, 0.06, 28, [1, 1, 1], true));
       this.shadowTex = this.particles.tex;
+      // studio stage + race track props (built once, drawn only in their mode)
+      this.pedestalMesh = r.createMesh(mesh.cylinderGeo(1.1, 1.42, 0.5, 28, [0.15, 0.11, 0.22], true));
+      this.pedTopMesh = r.createMesh(mesh.cylinderGeo(1.16, 1.16, 0.09, 32, [1, 1, 1], true));
+      this.backdropMesh = r.createMesh(mesh.sphereGeo(60, 24, 16, [1, 1, 1]));
+      this.studioBackTex = r.createTexture(G.textures.studioBackdrop());
+      this.laneMesh = r.createMesh(mesh.boxGeo(1, 1, 1, [1, 1, 1]));
+      this.teeMesh = r.createMesh(mesh.cylinderGeo(0.12, 0.32, 0.5, 12, [0.55, 0.42, 0.26], true));
     }
 
     /* ----------------------------- showcase ------------------------------ */
@@ -145,7 +169,7 @@
       }
     }
 
-    startRoundTurns() { this.beginTurn(); }
+    startRoundTurns() { if (this.mode === 'race') this._startRace(); else this.beginTurn(); }
 
     beginTurn() {
       this.activeIdx = this.turnOrder[this.turnPos];
@@ -248,6 +272,7 @@
       if (this.state === 'play' && !this.toast && this._achToasts.length) this.showToast(this._achToasts.shift(), 2.8);
 
       if (this.state === 'play') this._updatePlay(dt);
+      else if (this.state === 'studio') this._updateStudio(dt);
       else this._updateMenu(dt);
 
       if (this.course && this.course.ambientParticles) this.course.ambientParticles(this.particles, dt);
@@ -279,7 +304,8 @@
     }
 
     _updatePlay(dt) {
-      if (this.paused) { this._updateCamera(dt); return; }
+      if (this.paused) { if (this.mode === 'race') this._raceCamera(dt); else this._updateCamera(dt); return; }
+      if (this.mode === 'race') { this._updateRace(dt); this._raceCamera(dt); return; }
       if (this.swingActive) {
         this.swingT += dt;
         if (!this._launched && this.swingT >= C.impactT) this._doLaunch();
@@ -419,6 +445,7 @@
         else if (mg.id === 'longbomb') val = (v ? Math.round(v) + ' m' : 'flop');
         else if (mg.id === 'starsmash') val = v + ' ⭐';
         else if (mg.id === 'bullseye') val = v + ' pts';
+        else if (mg.id === 'race') val = (v >= RACE.dnf ? 'DNF' : v.toFixed(2) + 's');
         else val = (v >= 9999 ? 'lost' : v.toFixed(1) + ' m');
         return { name: o.p.name, color: G.players.colorCss(o.p), value: val, points: pts, total: o.p.score };
       });
@@ -493,29 +520,55 @@
     }
 
     _golferPose() {
-      const ss = math.smoothstep, lp = math.lerp;
+      const ss = math.smoothstep, lp = math.lerp, t = this.time;
       if (this.swingActive) {
         const T = this.swingT, IM = C.impactT, SD = C.swingDur;
-        if (T < IM) { const f = ss(0, IM, T); return { coil: lp(0.8, -0.3, f), tilt: 0.07, arm: lp(-2.0, 0.85, f * f), wrist: lp(-1.2, 0, f), weight: lp(-0.12, 0.18, f) }; }
+        if (T < IM) { const f = ss(0, IM, T); const sy = lp(1.0, 0.92, f); return { coil: lp(0.85, -0.35, f), tilt: 0.07, arm: lp(-2.0, 0.85, f * f), wrist: lp(-1.2, 0, f), weight: lp(-0.14, 0.2, f), sy: sy, sx: 1 / Math.sqrt(sy), sz: 1 / Math.sqrt(sy) }; }
         const f = ss(IM, SD, Math.min(T, SD));
-        return { coil: lp(-0.3, -1.0, f), tilt: 0.07, arm: lp(0.85, 1.7, f), wrist: lp(0, 0.8, f), weight: lp(0.18, 0.08, f) };
+        const hump = Math.sin(Math.min(1, f) * Math.PI);            // 0→1→0 impact stretch
+        const sy = 1 + hump * 0.08;
+        return { coil: lp(-0.35, -1.05, f), tilt: 0.07, arm: lp(0.85, 1.7, f), wrist: lp(0, 0.8, f), weight: lp(0.2, 0.08, f), bob: hump * 0.05, sy: sy, sx: 1 / Math.sqrt(sy), sz: 1 / Math.sqrt(sy) };
       }
       if (this.phase === 'drag') {
-        const w = this.power;
-        return { coil: w * 0.7, tilt: 0.07, arm: 0.5 - w * 2.4, wrist: -w * 1.1, weight: -w * 0.12 };
+        const w = this.power, sy = 1 - w * 0.08;
+        return { coil: w * 0.7, tilt: 0.07, arm: 0.5 - w * 2.4, wrist: -w * 1.1, weight: -w * 0.14, sy: sy, sx: 1 / Math.sqrt(sy), sz: 1 / Math.sqrt(sy) };
       }
-      const t = this.time;
-      return { coil: Math.sin(t * 1.3) * 0.04, tilt: 0.06, arm: 0.5 + Math.sin(t * 1.3) * 0.04, wrist: -0.05, weight: 0 };
+      // idle: breathing squash + gentle sway
+      const sy = 1 + Math.sin(t * 2.0) * 0.03, xz = 1 / Math.sqrt(sy);
+      return { coil: Math.sin(t * 0.9) * 0.05, tilt: 0.05 + Math.sin(t * 1.1) * 0.02, arm: 0.5 + Math.sin(t * 1.3) * 0.05, wrist: -0.05, weight: 0, bob: Math.sin(t * 2.0) * 0.02, sy: sy, sx: xz, sz: xz };
+    }
+
+    // A frantic Fall-Guys waddle-hop for the race (legs are one mesh, so a big
+    // hop + waddle + arm-pump reads as sprinting).
+    _runPose(phase, speed01) {
+      const hop = Math.abs(Math.sin(phase)), sy = 0.9 + hop * 0.16, xz = 1 / Math.sqrt(sy);
+      return {
+        coil: Math.sin(phase * 0.5) * 0.08, tilt: Math.sin(phase) * 0.13, arm: 0.6 + Math.sin(phase) * 0.55,
+        wrist: 0.2, weight: 0, pitch: 0.3 + speed01 * 0.18, bob: hop * 0.18, legSwing: Math.sin(phase) * 0.5,
+        sy: sy, sx: xz, sz: xz
+      };
+    }
+
+    // Studio idle turntable pose + a squash-pop hop when react (1→0) is active.
+    _studioPose(t, react) {
+      const sy0 = 1 + Math.sin(t * 2.0) * 0.03, xz0 = 1 / Math.sqrt(sy0);
+      const pose = { coil: Math.sin(t * 0.8) * 0.05, tilt: 0.03 + Math.sin(t * 1.1) * 0.02, arm: 0.5 + Math.sin(t * 1.3) * 0.06, wrist: -0.05, weight: 0, bob: Math.sin(t * 2.0) * 0.02, sy: sy0, sx: xz0, sz: xz0 };
+      if (react > 0) { const jump = Math.sin(react * Math.PI); pose.bob += jump * 0.35; const s = 1 + jump * 0.2; pose.sy = s; pose.sx = pose.sz = 1 / Math.sqrt(s); }
+      return pose;
     }
 
     /* ----------------------------- render -------------------------------- */
     render() {
+      if (this.state === 'studio') { this._drawStudio(); return; }
       if (!this.course) return;
       const e = this.world.env;
       const env = { lightDir: e.lightDir, lightColor: e.lightColor, ambient: e.ambient, fogColor: e.fogColor, fogDensity: e.fogDensity, clearColor: e.clearColor, specular: e.specular, rim: e.rim };
       this.r.beginFrame(this.camera, env);
       this.course.draw(this.r, this.camera, env, this.particles);
       this._drawModeObjects();
+
+      // Ball Dash: draw the runway + racers instead of the single golfer/ball.
+      if (this.state === 'play' && this.mode === 'race') { this._drawRace(env); this.particles.draw(this.camera); return; }
 
       const b = this.ball.pos;
       const gh = this.course.sampleHeight(b[0], b[2]);
@@ -571,16 +624,205 @@
       const aim = this.aimDir();
       const gx = b[0] - aim[0] * 1.3, gz = b[2] - aim[2] * 1.3;
       const gy = this.course.sampleHeight(gx, gz);
-      const p = this._golferPose(), g = this.gMesh;
-      const base = M.create(); M.translate(base, base, [gx, gy, gz]); M.rotateY(base, base, this.camYaw); M.translate(base, base, [0, 0, p.weight]);
-      const lower = M.create(); M.copy(lower, base); M.rotateY(lower, lower, p.coil * 0.35);
-      this.r.draw(g.lower, lower, { specular: 0.12, rim: env.rim * 0.6 });
-      const torso = M.create(); M.copy(torso, base); M.translate(torso, torso, [0, g.hipY, 0]); M.rotateY(torso, torso, p.coil); M.rotateZ(torso, torso, p.tilt);
-      this.r.draw(g.torso, torso, { specular: 0.14, rim: env.rim * 0.7 });
-      const arms = M.create(); M.copy(arms, torso); M.translate(arms, arms, [0, g.shoulderLocal, 0]); M.rotateX(arms, arms, p.arm);
-      this.r.draw(g.arms, arms, { specular: 0.18, rim: env.rim * 0.7 });
-      const club = M.create(); M.copy(club, arms); M.translate(club, club, g.hand); M.rotateX(club, club, p.wrist);
-      this.r.draw(g.club, club, { specular: 0.4, rim: env.rim * 0.6 });
+      const base = M.create(); M.translate(base, base, [gx, gy, gz]); M.rotateY(base, base, this.camYaw);
+      this._drawGolferAt(base, this._golferPose(), this.gMesh, env);
+    }
+
+    // Compose the 4-part rig from a base matrix (translate + yaw already applied)
+    // and a pose. Additive channels bob/pitch/legSwing/sx/sy/sz default to
+    // neutral. Squash (sx/sy/sz) scales the torso DRAW only, so it never leaks
+    // into the arms/club through the parenting chain.
+    _drawGolferAt(base, p, g, env, opts) {
+      opts = opts || {};
+      const rimK = opts.rim != null ? opts.rim : 1;
+      const sx = p.sx == null ? 1 : p.sx, sy = p.sy == null ? 1 : p.sy, sz = p.sz == null ? 1 : p.sz;
+      const root = M.create(); M.copy(root, base); M.translate(root, root, [0, p.bob || 0, p.weight || 0]);
+      const lower = M.create(); M.copy(lower, root); M.rotateY(lower, lower, (p.coil || 0) * 0.35); if (p.legSwing) M.rotateX(lower, lower, p.legSwing);
+      this.r.draw(g.lower, lower, { specular: 0.12, rim: env.rim * 0.6 * rimK });
+      const node = M.create(); M.copy(node, root); M.translate(node, node, [0, g.hipY, 0]); M.rotateY(node, node, p.coil || 0); M.rotateZ(node, node, p.tilt || 0); if (p.pitch) M.rotateX(node, node, p.pitch);
+      const torso = M.create(); M.copy(torso, node); if (sx !== 1 || sy !== 1 || sz !== 1) M.scale(torso, torso, [sx, sy, sz]);
+      this.r.draw(g.torso, torso, { specular: 0.16, rim: env.rim * 0.75 * rimK });
+      const arms = M.create(); M.copy(arms, node); M.translate(arms, arms, [0, g.shoulderLocal, 0]); M.rotateX(arms, arms, p.arm || 0);
+      this.r.draw(g.arms, arms, { specular: 0.18, rim: env.rim * 0.7 * rimK });
+      if (!opts.noClub) { const club = M.create(); M.copy(club, arms); M.translate(club, club, g.hand); M.rotateX(club, club, p.wrist || 0); this.r.draw(g.club, club, { specular: 0.4, rim: env.rim * 0.6 * rimK }); }
+    }
+
+    /* --------------------------- character studio ------------------------ */
+    enterStudio(players, idx) {
+      if (players) this.players = players;
+      this.studioIdx = Math.max(0, Math.min((this.players.length || 1) - 1, idx || 0));
+      this.state = 'studio'; this.menuMode = true; this.studioMode = true; this._studioReact = 0;
+      this.players.forEach((p) => { if (!p._m) G.players.buildMeshes(this.r, p); });
+      this.particles.clear();
+    }
+    setStudioPlayer(i) {
+      if (i < 0 || i >= this.players.length) return;
+      this.studioIdx = i;
+      const p = this.players[i]; if (!p._m) G.players.buildMeshes(this.r, p);
+      this._studioReact = 1; this.audio.click();
+    }
+    // kind: 'ball' re-textures only; anything else rebuilds the body mesh.
+    studioReact(kind) {
+      const p = this.players[this.studioIdx]; if (!p) return;
+      if (kind === 'ball') G.players.rebuildBall(this.r, p); else G.players.rebuildBody(this.r, p);
+      this._studioReact = 1;
+      this.particles.burst([0, 1.75, 0], 24, { speed: 5, col: G.players.color01(p), life: 0.9, size: 0.32, grav: -6, up: true, cone: 1.4 });
+      this.audio.boing();
+    }
+    exitStudio() {
+      this.studioMode = false;
+      this.players.forEach((p) => G.players.freeMeshes(this.r, p));
+      this.startShowcase();
+    }
+    _updateStudio(dt) {
+      if (this._studioReact > 0) this._studioReact = Math.max(0, this._studioReact - dt / 0.5);
+      const p = this.players[this.studioIdx];
+      if (p && Math.random() < 0.5) this.particles.emit({ p: [(Math.random() - 0.5) * 3, 4.5, (Math.random() - 0.5) * 2 - 0.4], v: [0, -0.6, 0], life: 3.2, size: 0.14, col: G.players.color01(p), drag: 0.4, grav: -0.3 });
+      // subject is drawn at x=0; a +x camera offset renders it left-of-centre so
+      // the right control panel never covers it (centre it on narrow screens).
+      const w = this.canvas.clientWidth || 1, h = this.canvas.clientHeight || 1;
+      const off = (w / h > 0.95) ? 0.95 : 0.0;
+      const cam = this.camera;
+      V.set(cam.position, off, 1.9, 5.05); V.set(cam.target, off, 1.35, 0); cam.updateView();
+    }
+    _drawStudio() {
+      const r = this.r, env = STUDIO_ENV;
+      r.beginFrame(this.camera, env);
+      const bm = M.create(); M.translate(bm, bm, this.camera.position);
+      r.draw(this.backdropMesh, bm, { texture: this.studioBackTex, unlit: true, cull: false, depthWrite: false });
+      const p = this.players[this.studioIdx];
+      const col = p ? G.players.color01(p) : [0.8, 0.8, 0.85];
+      const ped = M.create(); M.translate(ped, ped, [0, 0.25, 0]);
+      r.draw(this.pedestalMesh, ped, { specular: 0.12, rim: 0.3 });
+      const top = M.create(); M.translate(top, top, [0, 0.52, 0]);
+      r.draw(this.pedTopMesh, top, { tint: [col[0] * 0.55 + 0.2, col[1] * 0.55 + 0.2, col[2] * 0.55 + 0.2], specular: 0.25 });
+      const flash = this._studioReact > 0 ? 1 + this._studioReact : 1;
+      const ring = M.create(); M.translate(ring, ring, [0, 0.58, 0]); M.scale(ring, ring, [1.28, 1, 1.28]);
+      r.draw(this.ringMesh, ring, { unlit: true, emissive: [col[0] * flash, col[1] * flash, col[2] * flash], blend: true, additive: true, depthWrite: false, cull: false });
+      const spot = M.create(); M.translate(spot, spot, [0, 0.6, 0]); M.rotateX(spot, spot, -Math.PI / 2); M.scale(spot, spot, [5.5, 5.5, 1]);
+      r.draw(this.quadMesh, spot, { texture: this.shadowTex, unlit: true, emissive: [0.42, 0.38, 0.32], blend: true, additive: true, depthWrite: false, cull: false });
+      if (p && p._m) {
+        // sway around front-facing (+ a flourish spin during a reaction) so the
+        // face stays toward the camera in the character select.
+        const yaw = Math.sin(this.time * 0.5) * 0.55 + this._studioReact * this._studioReact * 1.2;
+        const base = M.create(); M.translate(base, base, [0, 0.56, 0]); M.rotateY(base, base, yaw); M.scale(base, base, [1.42, 1.42, 1.42]);
+        this._drawGolferAt(base, this._studioPose(this.time, this._studioReact), p._m, env, { noClub: true, rim: 1.4 });
+        if (p._ballTex) {
+          const ba = M.create(); M.translate(ba, ba, [1.15, 1.15 + Math.sin(this.time * 1.5) * 0.08, 0.2]); M.rotateY(ba, ba, this.time * 1.4); M.scale(ba, ba, [1.8, 1.8, 1.8]);
+          r.draw(this.ballMesh, ba, { texture: p._ballTex, specular: 0.7, rim: 0.3 });
+        }
+      }
+      this.particles.draw(this.camera);
+    }
+
+    /* ------------------------------ Ball Dash ---------------------------- */
+    _startRace() {
+      const c = this.course;
+      let dx = c.holePos[0] - c.teePos[0], dz = c.holePos[2] - c.teePos[2];
+      const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+      this._raceDir = [dx, 0, dz]; this._racePerp = [-dz, 0, dx];
+      this._raceGroundY = c.sampleHeight(c.teePos[0], c.teePos[2]);
+      this._raceStart = [c.teePos[0], this._raceGroundY, c.teePos[2]];
+      this.racers = this.players.map((p, i) => ({ i: i, pos: 0, vel: 0, last: null, finishT: null, stumble: 0, phase: i * 1.7, pad: 0 }));
+      this.raceState = 'countdown'; this._raceCountdown = RACE.countdown; this._raceT = 0; this._raceFinished = 0;
+      this.state = 'play'; this.menuMode = false; this.phase = 'race'; this._camSnap = true;
+      this.showToast('🏃 Ball Dash — mash to sprint!', 1.6);
+      this._emit('hud');
+    }
+    raceTap(i) { if (this.mode === 'race' && this.racers && this.racers[i]) this.racers[i].pad++; }
+    _raceWorld(i, pos, dy) {
+      const n = this.players.length, off = (i - (n - 1) / 2) * RACE.laneGap;
+      const s = this._raceStart, d = this._raceDir, pp = this._racePerp;
+      return [s[0] + d[0] * pos + pp[0] * off, this._raceGroundY + (dy || 0), s[2] + d[2] * pos + pp[2] * off];
+    }
+    _collectRaceInput(countdown) {
+      const R = RACE, out = [];
+      for (const rc of this.racers) {
+        const i = rc.i; out[i] = 0;
+        const pair = RACE_KEYS[i]; let tapped = null;
+        if (pair) { if (this.input.pressed.has(pair[0])) tapped = pair[0]; if (this.input.pressed.has(pair[1])) tapped = pair[1]; }
+        const padTaps = rc.pad; rc.pad = 0;
+        if (countdown) { if (tapped || padTaps) rc.stumble = 0.6; continue; }
+        if (tapped) { out[i] += (tapped !== rc.last ? R.step : R.stepHalf); rc.last = tapped; }
+        if (padTaps) { out[i] += padTaps * R.step; rc.last = null; }
+      }
+      return out;
+    }
+    _updateRace(dt) {
+      const R = RACE, n = this.players.length;
+      if (this.raceState === 'countdown') {
+        const prev = Math.ceil(this._raceCountdown); this._raceCountdown -= dt; const now = Math.ceil(this._raceCountdown);
+        if (now !== prev && now >= 1) this.audio.click();
+        this._collectRaceInput(true);
+        if (this._raceCountdown <= 0) { this.raceState = 'run'; this._raceT = 0; this.audio.woosh(); this._emit('hud'); }
+        return;
+      }
+      if (this.raceState === 'done') { this._raceDoneT -= dt; if (this._raceDoneT <= 0) this._finishRace(); return; }
+      this._raceT += dt;
+      const steps = this._collectRaceInput(false);
+      for (const rc of this.racers) {
+        if (rc.finishT != null) continue;
+        if (rc.stumble > 0) { rc.stumble -= dt; rc.vel *= Math.exp(-6 * dt); }
+        else { rc.vel += steps[rc.i] || 0; if (rc.vel > R.vmax) rc.vel = R.vmax; }
+        rc.vel *= Math.exp(-R.decay * dt);
+        rc.pos += rc.vel * dt;
+        rc.phase += (0.6 + rc.vel) * dt * 6;
+        if (rc.vel > 2 && Math.random() < 0.5) this.particles.burst(this._raceWorld(rc.i, Math.max(0, rc.pos - 0.2), 0.05), 2, { speed: 1.5, col: [0.82, 0.76, 0.6], life: 0.4, size: 0.2, grav: -5, up: true });
+        if (rc.pos >= R.len) { rc.pos = R.len; rc.finishT = this._raceT; this._raceFinished++; this.audio.boing(); }
+      }
+      if (this._raceFinished >= n || this._raceT >= R.cap) {
+        this.raceState = 'done'; this._raceDoneT = 1.8; this.audio.win();
+        const w = this.racers.slice().filter((r) => r.finishT != null).sort((a, b) => a.finishT - b.finishT)[0];
+        if (w) { const wp = this._raceWorld(w.i, R.len, 0.6); this.particles.burst(wp, 44, { speed: 7, col: G.players.color01(this.players[w.i]), life: 1.2, size: 0.4, grav: -8, up: true, cone: 1.2 }); this.showToast('🏁 ' + this.players[w.i].name + ' — first to the ball!', 2.0); }
+      }
+      this._emit('hud');
+    }
+    _finishRace() {
+      const R = RACE;
+      this.players.forEach((p, i) => {
+        const rc = this.racers[i];
+        p.result = (rc && rc.finishT != null) ? rc.finishT : (R.dnf + (R.len - (rc ? rc.pos : 0)));
+      });
+      this.racers = null; this.raceState = null; this.phase = 'aim';
+      this._emit('hud');
+      this._endRound();
+    }
+    _raceCamera(dt) {
+      const R = RACE;
+      let lead = 0; if (this.racers) for (const r of this.racers) if (r.pos > lead) lead = r.pos;
+      const midZ = Math.min(R.len, lead + 3.5);
+      const s = this._raceStart, d = this._raceDir, pp = this._racePerp;
+      const cx = s[0] + d[0] * midZ, cz = s[2] + d[2] * midZ;
+      const eye = [cx - d[0] * 12 - pp[0] * 2.5, this._raceGroundY + 7.5, cz - d[2] * 12 - pp[2] * 2.5];
+      const target = [cx, this._raceGroundY + 1.1, cz];
+      if (this._camSnap) { V.copy(this.camera.position, eye); V.copy(this.camera.target, target); this.camera.updateView(); this._camSnap = false; }
+      else this.camera.follow(eye, target, dt, 3);
+    }
+    _drawRace(env) {
+      const R = RACE, n = this.players.length;
+      const yaw = Math.atan2(this._raceDir[0], this._raceDir[2]);
+      for (let i = 0; i < n; i++) {
+        const col = G.players.color01(this.players[i]);
+        const mid = this._raceWorld(i, R.len / 2, 0);
+        const m = M.create(); M.translate(m, m, [mid[0], this._raceGroundY + 0.06, mid[2]]); M.rotateY(m, m, yaw); M.scale(m, m, [1.5, 0.12, R.len + 2]);
+        this.r.draw(this.laneMesh, m, { tint: [col[0] * 0.45 + 0.06, col[1] * 0.45 + 0.06, col[2] * 0.45 + 0.06], specular: 0.15, rim: env.rim * 0.5 });
+      }
+      const fin = [this._raceStart[0] + this._raceDir[0] * R.len, this._raceGroundY, this._raceStart[2] + this._raceDir[2] * R.len];
+      const tee = M.create(); M.translate(tee, tee, [fin[0], this._raceGroundY + 0.25, fin[2]]);
+      this.r.draw(this.teeMesh, tee, { specular: 0.2 });
+      const fb = M.create(); M.translate(fb, fb, [fin[0], this._raceGroundY + 0.62, fin[2]]); M.rotateY(fb, fb, this.time * 2); M.scale(fb, fb, [2, 2, 2]);
+      this.r.draw(this.ballMesh, fb, { texture: this._defaultBallTex, specular: 0.7, rim: 0.3 });
+      for (const rc of this.racers || []) {
+        const p = this.players[rc.i]; if (!p._m) continue;
+        const wp = this._raceWorld(rc.i, rc.pos, 0);
+        const pose = (this.raceState === 'run') ? this._runPose(rc.phase, Math.min(1, rc.vel / R.vmax)) : this._golferPose();
+        if (rc.stumble > 0) { pose.tilt = 0.6; pose.pitch = 0.8; pose.bob = 0; }
+        // contact shadow
+        const sm = M.create(); M.translate(sm, sm, [wp[0], this._raceGroundY + 0.09, wp[2]]); M.rotateX(sm, sm, -Math.PI / 2); M.scale(sm, sm, [0.9, 0.9, 1]);
+        this.r.draw(this.quadMesh, sm, { texture: this.shadowTex, unlit: true, tint: [0, 0, 0], blend: true, depthWrite: false, opacity: 0.32, cull: false });
+        const base = M.create(); M.translate(base, base, wp); M.rotateY(base, base, yaw);
+        this._drawGolferAt(base, pose, p._m, env, { noClub: true });
+      }
     }
 
     loop(now) {

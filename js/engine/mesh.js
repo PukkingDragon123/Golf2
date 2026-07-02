@@ -126,6 +126,25 @@
     return geom(pos, nrm, col, uv, idx);
   }
 
+  /* ------------------------------ ellipsoid ------------------------------ */
+  // A unit sphere scaled per-axis into a clean ovoid, with an optional taper
+  // that narrows the bottom (taper<1) for a potato/pear silhouette. Normals are
+  // inverse-scaled + renormalized so lighting stays correct.
+  function ellipsoidGeo(rx, ry, rz, segU, segV, color, taper) {
+    const g = sphereGeo(1, segU, segV, color);
+    const p = g.position, n = g.normal;
+    const t = (taper == null) ? 1 : taper;
+    for (let i = 0; i < p.length; i += 3) {
+      const uy = p[i + 1];                       // unit-sphere y in [-1,1]
+      const tw = t + (1 - t) * ((uy + 1) * 0.5); // 1 at top, taper at bottom
+      p[i] = p[i] * rx * tw; p[i + 1] = uy * ry; p[i + 2] = p[i + 2] * rz * tw;
+      let nx = n[i] / (rx * tw), ny = n[i + 1] / ry, nz = n[i + 2] / (rz * tw);
+      const l = Math.hypot(nx, ny, nz) || 1;
+      n[i] = nx / l; n[i + 1] = ny / l; n[i + 2] = nz / l;
+    }
+    return g;
+  }
+
   /* ------------------------------ cylinder ------------------------------- */
   // Along Y axis, centered at origin. rTop/rBottom allow cones & tapers.
   function cylinderGeo(rTop, rBottom, height, seg, color, caps) {
@@ -245,5 +264,5 @@
     };
   }
 
-  G.mesh = { Builder, boxGeo, sphereGeo, cylinderGeo, quadGeo, buildTerrain, geom };
+  G.mesh = { Builder, boxGeo, sphereGeo, ellipsoidGeo, cylinderGeo, quadGeo, buildTerrain, geom };
 })(window.GOLF = window.GOLF || {});
